@@ -96,3 +96,57 @@ def test_pyinstaller_analysis_excludes_vendor_binaries(tmp_path):
     payloads = [command[index + 1] for index, arg in enumerate(command) if arg == '--add-data']
     assert payloads == [f'{tmp_path / "LICENSE"}:.', f'{tmp_path / "THIRD_PARTY.md"}:.']
     assert not any('vendor' in item for item in command)
+
+
+@pytest.mark.parametrize('executable,fonts', [
+    ('LibreOffice/program/soffice.exe', 'LibreOffice/share/fonts/truetype'),
+    ('opt/libreoffice25.8/program/soffice', 'opt/libreoffice25.8/share/fonts/truetype'),
+    ('LibreOffice.app/Contents/MacOS/soffice', 'LibreOffice.app/Contents/Resources/fonts/truetype'),
+])
+def test_chinese_font_copied_into_office_private_fonts(tmp_path, executable, fonts):
+    vendor = tmp_path / 'vendor'
+    (vendor / 'fonts').mkdir(parents=True)
+    (vendor / 'fonts/NotoSansSC-Regular.ttf').write_bytes(b'static TTF')
+    (vendor / 'fonts/OFL.txt').write_text('SIL Open Font License')
+    soffice = vendor / 'libreoffice' / executable
+    soffice.parent.mkdir(parents=True)
+    soffice.write_bytes(b'office binary')
+    engines.bundle_office_font(vendor)
+    private_fonts = vendor / 'libreoffice' / fonts
+    assert (private_fonts / 'NotoSansSC-Regular.ttf').read_bytes() == b'static TTF'
+    assert (private_fonts / 'NotoSansSC-OFL.txt').read_text() == 'SIL Open Font License'
+    # A cached extraction marker must not suppress repair of private fonts.
+    (vendor / 'libreoffice/.any2pdf-version').write_text(engines.VERSION)
+    (private_fonts / 'NotoSansSC-Regular.ttf').unlink()
+    engines.bundle_office_font(vendor)
+    assert (private_fonts / 'NotoSansSC-Regular.ttf').read_bytes() == b'static TTF'
+
+
+def test_windows_office_runtime_dlls_are_app_local_and_x64_only(tmp_path):
+    vendor = tmp_path / 'vendor'
+    office = vendor / 'libreoffice'
+    program = office / 'LibreOffice/program'
+    program.mkdir(parents=True)
+    (program / 'soffice.exe').write_bytes(b'office')
+    (office / 'System64').mkdir()
+    (office / 'System32').mkdir()
+    (office / 'System64/vcruntime140.dll').write_bytes(b'x64 runtime')
+    (office / 'System64/msvcp140_1.dll').write_bytes(b'x64 C++ runtime')
+    (office / 'System32/vcruntime140.dll').write_bytes(b'wrong x86 runtime')
+    (office / 'System32/x86-only.dll').write_bytes(b'wrong architecture')
+    engines.bundle_office_windows_runtime(vendor)
+    assert (program / 'vcruntime140.dll').read_bytes() == b'x64 runtime'
+    assert (program / 'msvcp140_1.dll').read_bytes() == b'x64 C++ runtime'
+    assert not (program / 'x86-only.dll').exists()
+    assert (office / 'System64/vcruntime140.dll').read_bytes() == b'x64 runtime'
+    # Repairs an existing cached administrative extraction without MSI rerun.
+    (office / '.any2pdf-version').write_text(engines.VERSION)
+    (program / 'vcruntime140.dll').unlink()
+    engines.bundle_office_windows_runtime(vendor)
+    assert (program / 'vcruntime140.dll').read_bytes() == b'x64 runtime'
+
+
+def test_office_runtime_dll_copy_ignores_non_windows_tree(tmp_path):
+    vendor = tmp_path / 'vendor'
+    (vendor / 'libreoffice/opt/libreoffice25.8/program').mkdir(parents=True)
+    engines.bundle_office_windows_runtime(vendor)

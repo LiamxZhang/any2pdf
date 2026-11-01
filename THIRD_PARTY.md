@@ -9,6 +9,7 @@ Windows/Linux and the application resource directory on macOS.
 | Component | License / source |
 | --- | --- |
 | LibreOffice 25.8.7.2 | MPL 2.0 / LGPL 3+ and component licenses, retained in the complete distribution; [source archive](https://downloadarchive.documentfoundation.org/libreoffice/old/25.8.7.2/src/) |
+| Microsoft Visual C++ runtime DLLs supplied in the official LibreOffice Windows MSI | Original Microsoft terms retained with the LibreOffice payload; x64 DLLs are copied into LibreOffice's program directory for application-local loading |
 | Qt 6 / PySide6 / shiboken6 6.8.3 | LGPL 3 / GPL / commercial, including Qt module notices; [Qt LGPL obligations](https://www.qt.io/licensing/open-source-lgpl-obligations), [PySide source](https://download.qt.io/official_releases/QtForPython/pyside6/PySide6-6.8.3-src/) |
 | Playwright 1.56.0 | Apache 2.0; [source](https://github.com/microsoft/playwright/tree/v1.56.0) |
 | Chromium (revision pinned by Playwright 1.56.0) | BSD and numerous component licenses; retain browser `LICENSE*` / `credits*` files; [source](https://chromium.googlesource.com/chromium/src/) |

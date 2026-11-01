@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import zipfile
 
@@ -30,6 +31,8 @@ def fixtures(root: Path) -> list[Path]:
 
 
 def main() -> None:
+    if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
     from pypdf import PdfReader, PdfWriter
 
     parser = argparse.ArgumentParser()

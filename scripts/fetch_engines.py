@@ -146,13 +146,48 @@ def fetch_font(vendor: Path, cache: Path) -> None:
     shutil.copy2(license_path, fonts / 'OFL.txt')
 
 
+def bundle_office_font(vendor: Path) -> None:
+    """Expose CJK glyphs through LibreOffice's private font directories."""
+    office = vendor / 'libreoffice'
+    destinations = set()
+    for pattern in ('**/program/soffice.exe', '**/program/soffice', '**/MacOS/soffice'):
+        for executable in office.glob(pattern):
+            base = executable.parent.parent
+            relative = 'Resources/fonts/truetype' if executable.parent.name == 'MacOS' else 'share/fonts/truetype'
+            destinations.add(base / relative)
+    if not destinations:
+        raise RuntimeError('Cannot locate bundled LibreOffice private font directory')
+    for destination in sorted(destinations):
+        destination.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(vendor / 'fonts/NotoSansSC-Regular.ttf', destination / 'NotoSansSC-Regular.ttf')
+        shutil.copy2(vendor / 'fonts/OFL.txt', destination / 'NotoSansSC-OFL.txt')
+
+
+def bundle_office_windows_runtime(vendor: Path) -> None:
+    """Make the official MSI's x64 VC runtime DLLs application-local."""
+    office = vendor / 'libreoffice'
+    # Administrative extraction retains Windows Installer's System64 payload
+    # directory but does not install/register its files in the host system.
+    # System32 contains a different architecture and must never be used here.
+    runtime = office / 'System64'
+    if not runtime.is_dir():
+        return
+    libraries = sorted(runtime.glob('*.dll'))
+    for executable in office.glob('**/program/soffice.exe'):
+        for library in libraries:
+            shutil.copy2(library, executable.parent / library.name)
+
+
 def main() -> None:
     vendor, cache = ROOT / 'vendor', ROOT / '.local/downloads'
     vendor.mkdir(exist_ok=True)
     fetch_libreoffice(vendor, cache)
+    bundle_office_windows_runtime(vendor)
     fetch_font(vendor, cache)
+    # Always run even when the LibreOffice extraction marker is cached.
+    bundle_office_font(vendor)
     env = dict(os.environ, PLAYWRIGHT_BROWSERS_PATH=str(vendor / 'chromium'))
-    subprocess.run([sys.executable, '-m', 'playwright', 'install', 'chromium'], env=env, check=True)
+    subprocess.run([sys.executable, '-m', 'playwright', 'install', '--no-shell', 'chromium'], env=env, check=True)
     (vendor / 'versions.json').write_text(json.dumps({'libreoffice': VERSION, 'playwright': '1.56.0', 'font_commit': FONT_COMMIT}, indent=2))
 
 

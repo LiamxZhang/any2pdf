@@ -66,8 +66,30 @@ def office_pdf(source, target, cancelled):
         proc = subprocess.Popen(command, stdout=stream, stderr=subprocess.STDOUT,
                                 creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0)
         start = time.monotonic()
+        descendants = {}
+        drain_started = None
+        def child_running(child):
+            try:
+                return child.is_running() and child.status() != psutil.STATUS_ZOMBIE
+            except psutil.NoSuchProcess:
+                return False
         try:
-            while proc.poll() is None:
+            while True:
+                try:
+                    for child in psutil.Process(proc.pid).children(recursive=True):
+                        descendants[child.pid] = child
+                except psutil.NoSuchProcess:
+                    pass
+                # The launcher may return before a conversion/helper child has
+                # finished writing its isolated profile. Keep that directory
+                # until all observed descendants have exited as well.
+                if proc.poll() is not None:
+                    if not any(child_running(child) for child in descendants.values()):
+                        break
+                    if drain_started is None:
+                        drain_started = time.monotonic()
+                    if time.monotonic() - drain_started >= 10:
+                        break  # finally kills and reaps known lingering children
                 if cancelled():
                     raise ConversionError('cancelled')
                 if time.monotonic() - start > TIMEOUT:
@@ -76,16 +98,44 @@ def office_pdf(source, target, cancelled):
         finally:
             if proc.poll() is None:
                 kill_tree(proc.pid)
+            for child in descendants.values():
+                if child_running(child):
+                    try:
+                        child.kill()  # Process handles protect against PID reuse.
+                    except psutil.NoSuchProcess:
+                        pass
+            psutil.wait_procs(list(descendants.values()), timeout=3)
+            # LO's extension registry creates paths over MAX_PATH even for an
+            # ordinary output folder. Without an extended Windows path Python
+            # can skip those files as "missing", then fail removing the parent.
+            if profile.exists():
+                cleanup_path = str(profile.resolve())
+                if sys.platform == 'win32':
+                    cleanup_path = ('\\\\?\\UNC\\' + cleanup_path[2:] if cleanup_path.startswith('\\\\')
+                                    else '\\\\?\\' + cleanup_path)
+                shutil.rmtree(cleanup_path)
     candidates = list(dest.glob('*.pdf'))
     if proc.returncode != 0 or len(candidates) != 1:
-        raise ConversionError('engine_failed', log.read_text(encoding='utf-8', errors='replace')[-16000:])
+        detail = f'LibreOffice exit code: {proc.returncode}; generated PDF files: {len(candidates)}\n'
+        detail += log.read_text(encoding='utf-8', errors='replace')[-15000:]
+        raise ConversionError('engine_failed', detail)
     candidates[0].replace(target)
 
 
 class LocalDocumentHandler(SimpleHTTPRequestHandler):
     """Serve only the source directory; disallow symlink escapes and listings."""
+    extensions_map = {**SimpleHTTPRequestHandler.extensions_map, '.ttf': 'font/ttf'}
+
+    def __init__(self, *args, font_path=None, **kwargs):
+        self.font_path = Path(font_path).resolve() if font_path is not None else None
+        super().__init__(*args, **kwargs)
+
     def translate_path(self, path):
         relative = unquote(urlparse(path).path).lstrip('/')
+        # This reserved URL exposes exactly one trusted bundled file, never
+        # an arbitrary path outside the document directory.
+        if relative == '__any2pdf_font.ttf' and self.font_path is not None:
+            return str(self.font_path)
         root = Path(self.directory).resolve()
         candidate = (root / relative).resolve()
         if not candidate.is_relative_to(root) or not candidate.is_file():
@@ -100,6 +150,39 @@ class LocalDocumentHandler(SimpleHTTPRequestHandler):
         pass
 
 
+def add_html_font_fallback(page, font_url):
+    """Trusted converter code runs while document-authored scripts stay disabled."""
+    page.evaluate('''fontURL => {
+        // Snapshot before changing inherited styles so descendants keep their
+        // original font choices and get exactly one appended fallback.
+        const styles = Array.from(document.querySelectorAll('*'), element =>
+            [element, getComputedStyle(element).fontFamily]);
+        const sheet = document.createElement('style');
+        sheet.textContent = '@font-face {font-family: "Any2PDF CJK"; src: url("' +
+            fontURL + '") format("truetype"); font-weight: 100 900; font-style: normal;}';
+        document.head.appendChild(sheet);
+        for (const [element, family] of styles) {
+            element.style.setProperty('font-family', family + ', "Any2PDF CJK"', 'important');
+        }
+        const probe = document.createElement('span');
+        probe.id = '__any2pdf_font_probe';
+        probe.textContent = '你好';
+        probe.style.cssText = 'font-family: "Any2PDF CJK" !important; font-size:16px; ' +
+            'position:absolute; left:-10000px; visibility:hidden; display:block !important';
+        document.body.appendChild(probe);
+        return probe.offsetHeight; // Force layout and the font request.
+    }''', font_url)
+    # Awaiting a JS Promise can hang indefinitely with document scripts disabled.
+    # Synchronous evaluation plus a bounded Python loop leaves font loading to
+    # Chromium without permitting document-authored JavaScript to run.
+    deadline = time.monotonic() + 30
+    while not page.evaluate('''() => document.fonts.check('16px "Any2PDF CJK"', '你好')'''):
+        if time.monotonic() >= deadline:
+            raise ConversionError('engine_failed', 'Bundled Chinese font did not load within 30 seconds')
+        time.sleep(0.05)
+    page.evaluate('''() => document.getElementById('__any2pdf_font_probe')?.remove()''')
+
+
 def html_pdf(source, target, cancelled):
     from urllib.parse import quote
     bundled = vendor_root() / 'chromium'
@@ -108,7 +191,9 @@ def html_pdf(source, target, cancelled):
     elif getattr(sys, 'frozen', False):
         raise ConversionError('missing_browser', bundled)
     from playwright.sync_api import sync_playwright, Error
-    handler = functools.partial(LocalDocumentHandler, directory=str(source.parent))
+    font = vendor_root() / 'fonts/NotoSansSC-Regular.ttf'
+    handler = functools.partial(LocalDocumentHandler, directory=str(source.parent),
+                                font_path=font if font.is_file() else None)
     server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
     server.daemon_threads = True
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -118,14 +203,19 @@ def html_pdf(source, target, cancelled):
         with sync_playwright() as p:
             if not Path(p.chromium.executable_path).is_file():
                 raise ConversionError('missing_browser', p.chromium.executable_path)
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=True, executable_path=p.chromium.executable_path)
             try:
-                page = browser.new_page(java_script_enabled=False)
+                # Source CSP must not prevent trusted font/style injection.
+                # Scripts remain disabled and the route still blocks networks.
+                page = browser.new_page(java_script_enabled=False, bypass_csp=True)
                 page.route('**/*', lambda route: route.continue_()
                            if route.request.url.startswith(origin + '/') else route.abort())
                 if cancelled():
                     raise ConversionError('cancelled')
                 page.goto(origin + '/' + quote(source.name), wait_until='networkidle', timeout=120000)
+                page.emulate_media(media='print')
+                if font.is_file():
+                    add_html_font_fallback(page, origin + '/__any2pdf_font.ttf')
                 page.pdf(path=str(target), format='A4', print_background=True,
                          margin={'top': '15mm', 'bottom': '15mm', 'left': '12mm', 'right': '12mm'})
             finally:
