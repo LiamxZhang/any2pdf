@@ -1,0 +1,82 @@
+name: Portable release
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, 'feat/**']
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: Windows-x86_64
+            executable: dist/Any2PDF/Any2PDF.exe
+          - os: ubuntu-22.04
+            target: Linux-x86_64
+            executable: dist/Any2PDF/Any2PDF
+          - os: macos-14
+            target: Darwin-arm64
+            executable: dist/Any2PDF.app/Contents/MacOS/Any2PDF
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Linux native runtime libraries (build/test host only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libnss3 libxss1 libasound2 libatk1.0-0 libatk-bridge2.0-0 libgbm1 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libcups2 libdrm2 libx11-xcb1 libxcb-cursor0 libxcb-xinerama0 libxcb-icccm4 libxcb-keysyms1 libxcb-shape0 libxcb-render-util0 libxrender1 libsm6 libice6 libglu1-mesa libfontconfig1 libdbus-1-3
+      - uses: actions/cache@v4
+        with:
+          path: .local/downloads
+          key: engines-${{ matrix.target }}-lo25.8.7.2-font-a85815a4
+      - name: All tests before bundling
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests -q
+      - name: Build complete portable payload
+        run: python -m scripts.build --archive
+      - name: All tests with downloaded engines available
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests -q
+      - name: Frozen conversions, error handling, and native Qt GUI (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a python -m scripts.smoke "${{ matrix.executable }}" --gui-smoke
+      - name: Frozen conversions, error handling, and native Qt GUI (Windows/macOS)
+        if: runner.os != 'Linux'
+        run: python -m scripts.smoke "${{ matrix.executable }}" --gui-smoke
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Any2PDF-${{ matrix.target }}
+          path: dist/release/*
+          if-no-files-found: error
+          compression-level: 0
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Publish only after every native smoke test passes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* --verify-tag --title "Any2PDF $GITHUB_REF_NAME" --generate-notes
