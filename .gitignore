@@ -7,4 +7,3 @@ dist/
 vendor/
 .local/
 *.spec
-!Any2PDF.spec
