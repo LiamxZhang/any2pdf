@@ -52,6 +52,27 @@ def collect_licenses(destination: Path) -> None:
                 shutil.copy2(source, destination / f'CPython-{name}')
 
 
+def pyinstaller_command(root: Path) -> list[str]:
+    # Native engine bundles must never enter PyInstaller's binary cache: its
+    # per-file Mach-O rewriting/signing loses the surrounding framework bundle.
+    return [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--windowed', '--name', 'Any2PDF',
+            '--add-data', f'{root / "LICENSE"}:.', '--add-data', f'{root / "THIRD_PARTY.md"}:.',
+            '--collect-all', 'playwright', '--collect-all', 'pypdf', '--collect-all', 'reportlab',
+            '--exclude-module', 'PySide6.QtWebEngineCore', '--exclude-module', 'PySide6.QtWebEngineWidgets',
+            '--exclude-module', 'PySide6.QtWebEngineQuick', '--exclude-module', 'tkinter', str(root / 'main.py')]
+
+
+def bundle_vendor(source: Path, dist: Path, system: str) -> Path:
+    """Copy intact engine trees only after PyInstaller finishes the runtime."""
+    relative = 'Any2PDF.app/Contents/Resources/vendor' if system == 'Darwin' else 'Any2PDF/_internal/vendor'
+    destination = dist / relative
+    if destination.exists():
+        shutil.rmtree(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination, symlinks=True)
+    return destination
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--skip-fetch', action='store_true')
@@ -63,14 +84,18 @@ def main() -> None:
     if not (vendor / 'fonts/NotoSansSC-Regular.ttf').exists() or not (vendor / 'versions.json').exists():
         raise RuntimeError('Vendor payload missing; run python -m scripts.fetch_engines')
     collect_licenses(vendor / 'licenses')
-    command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--onedir', '--windowed', '--name', 'Any2PDF',
-               '--add-data', f'{vendor}:vendor', '--add-data', f'{ROOT / "LICENSE"}:.', '--add-data', f'{ROOT / "THIRD_PARTY.md"}:.',
-               '--collect-all', 'playwright', '--collect-all', 'pypdf', '--collect-all', 'reportlab',
-               '--exclude-module', 'PySide6.QtWebEngineCore', '--exclude-module', 'PySide6.QtWebEngineWidgets',
-               '--exclude-module', 'PySide6.QtWebEngineQuick', '--exclude-module', 'tkinter', str(ROOT / 'main.py')]
-    subprocess.run(command, cwd=ROOT, check=True)
+    subprocess.run(pyinstaller_command(ROOT), cwd=ROOT, check=True)
+    system = platform.system()
+    bundle_vendor(vendor, ROOT / 'dist', system)
+    if system == 'Darwin':
+        app = ROOT / 'dist/Any2PDF.app'
+        # Signing must see the complete Chromium/LibreOffice apps and framework
+        # symlinks. Keep upstream entitlements while applying an ad-hoc signature
+        # to the assembled app; verification failure blocks archive publication.
+        subprocess.run(['codesign', '--force', '--deep', '--sign', '-',
+                        '--preserve-metadata=entitlements', str(app)], check=True)
+        subprocess.run(['codesign', '--verify', '--deep', '--strict', '--verbose=2', str(app)], check=True)
     if args.archive:
-        system = platform.system()
         machine = {'AMD64': 'x86_64', 'aarch64': 'arm64'}.get(platform.machine(), platform.machine())
         name = f'Any2PDF-0.1.0-{system}-{machine}'
         release = ROOT / 'dist/release'

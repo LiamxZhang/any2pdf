@@ -14,6 +14,14 @@ def run_worker(request_path):
     result_path = Path(request['result'])
     cancel_path = Path(request['cancel'])
     def emit(stage):
+        if request.get('stage'):
+            try:
+                stage_path = Path(request['stage'])
+                stage_temp = stage_path.with_suffix('.tmp')
+                stage_temp.write_text(json.dumps({'stage': stage}), encoding='utf-8')
+                stage_temp.replace(stage_path)
+            except OSError:
+                pass  # Progress is advisory; result reporting remains authoritative.
         if sys.stdout:
             print(json.dumps({'stage': stage}), flush=True)
     try:

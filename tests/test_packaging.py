@@ -8,6 +8,7 @@ import pytest
 from scripts.fetch_engines import verify_digest, extract_tar, libreoffice_asset
 import scripts.fetch_engines as engines
 from scripts.build import split_asset
+import scripts.build as build
 
 
 def test_checksum_rejects_corrupt_cache(tmp_path):
@@ -62,3 +63,36 @@ def test_font_source_is_checked_against_pinned_git_blob(tmp_path):
     engines.verify_git_blob(path, expected)
     with pytest.raises(ValueError, match='checksum'):
         engines.verify_git_blob(path, '0' * 40)
+
+
+@pytest.mark.parametrize('system,relative', [('Windows', 'Any2PDF/_internal/vendor'), ('Linux', 'Any2PDF/_internal/vendor'), ('Darwin', 'Any2PDF.app/Contents/Resources/vendor')])
+def test_vendor_copied_after_analysis_into_native_runtime(tmp_path, system, relative):
+    source = tmp_path / 'vendor'
+    (source / 'chromium/Chromium.app/Contents/MacOS').mkdir(parents=True)
+    executable = source / 'chromium/Chromium.app/Contents/MacOS/Chromium'
+    executable.write_bytes(b'native binary must not be transformed')
+    destination = build.bundle_vendor(source, tmp_path / 'dist', system)
+    assert destination == tmp_path / 'dist' / relative
+    assert (destination / executable.relative_to(source)).read_bytes() == executable.read_bytes()
+
+
+def test_vendor_copy_preserves_framework_symlinks(tmp_path):
+    source = tmp_path / 'vendor'
+    (source / 'Framework.framework/Versions/A').mkdir(parents=True)
+    (source / 'Framework.framework/Versions/A/binary').write_bytes(b'framework')
+    link = source / 'Framework.framework/Versions/Current'
+    try:
+        link.symlink_to('A', target_is_directory=True)
+    except OSError:
+        pytest.skip('Windows symlink privilege unavailable')
+    destination = build.bundle_vendor(source, tmp_path / 'dist', 'Darwin')
+    copied = destination / link.relative_to(source)
+    assert copied.is_symlink()
+    assert (copied / 'binary').read_bytes() == b'framework'
+
+
+def test_pyinstaller_analysis_excludes_vendor_binaries(tmp_path):
+    command = build.pyinstaller_command(tmp_path)
+    payloads = [command[index + 1] for index, arg in enumerate(command) if arg == '--add-data']
+    assert payloads == [f'{tmp_path / "LICENSE"}:.', f'{tmp_path / "THIRD_PARTY.md"}:.']
+    assert not any('vendor' in item for item in command)

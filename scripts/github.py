@@ -7,7 +7,15 @@ import urllib.error
 import urllib.request
 
 
-def github_request(endpoint, method='GET', payload=None):
+class CredentialRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if redirected and urllib.parse.urlparse(newurl).hostname != 'api.github.com':
+            redirected.remove_header('Authorization')
+        return redirected
+
+
+def github_request(endpoint, method='GET', payload=None, raw=False):
     if not endpoint.startswith('/') or endpoint.startswith('//'):
         raise ValueError('Use an API path beginning with /')
     token = os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN')
@@ -23,9 +31,9 @@ def github_request(endpoint, method='GET', payload=None):
         data=json.dumps(payload).encode('utf-8') if payload is not None else None,
         headers={'Authorization': 'Bearer ' + token, 'User-Agent': 'Any2PDF-maintainer',
                  'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}, method=method)
-    with urllib.request.urlopen(req, timeout=60) as response:
+    with urllib.request.build_opener(CredentialRedirect()).open(req, timeout=60) as response:
         body = response.read()
-        return json.loads(body) if body else {}
+        return body if raw else json.loads(body) if body else {}
 
 
 if __name__ == '__main__':

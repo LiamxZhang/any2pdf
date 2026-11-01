@@ -8,7 +8,10 @@ def resource_root():
 
 
 def vendor_root():
-    return Path(os.environ.get('ANY2PDF_VENDOR', resource_root() / 'vendor'))
+    default = resource_root() / 'vendor'
+    if getattr(sys, 'frozen', False) and sys.platform == 'darwin':
+        default = Path(sys.executable).resolve().parents[1] / 'Resources/vendor'
+    return Path(os.environ.get('ANY2PDF_VENDOR', default))
 
 
 def data_root():

@@ -4,7 +4,7 @@ Date: 2026-11-01. Development host: Windows x86-64, Python 3.12.4.
 
 ## Local evidence
 
-`python -m pytest tests -q` at source integration: **38 passed, 2 skipped**. The two integration skips are LibreOffice and Chromium before engine downloads. Later build/CI evidence should supersede this count.
+`python -m pytest tests -q` at source integration: **43 passed, 3 skipped**. Two integration skips are LibreOffice and Chromium before engine downloads; the third is a symlink-copy test requiring Windows symlink privileges. Linux/macOS exercise that test. Later build/CI evidence should supersede this count.
 
 Verified behavior includes exact 10 GiB admission and >10 GiB rejection using a sparse file; this is a size-boundary test, not an arbitrary 10 GiB Office conversion claim. Text and PDF input use bounded reads. Rendered text/image pages are serialized to disk independently. Metadata, page indexes and a single decoded image/font remain memory consumers.
 

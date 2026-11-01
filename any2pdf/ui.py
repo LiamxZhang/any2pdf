@@ -11,7 +11,7 @@ import psutil
 import tempfile
 
 from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QLockFile
-from PySide6.QtGui import QColor, QDesktopServices, QFont
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
     QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QDialog, QVBoxLayout, QWidget)
@@ -22,7 +22,7 @@ from .engines import capabilities, kill_tree, TIMEOUT
 from .errors import ConversionError, explain
 from .history import History
 from .i18n import tr
-from .paths import data_root, resource_root
+from .paths import data_root, resource_root, vendor_root
 
 STYLE = '''
 QMainWindow, QDialog { background: #F6F7FB; }
@@ -419,6 +419,7 @@ class MainWindow(QMainWindow):
         self.job_outdir = Path(self.outdir.text()).expanduser().resolve()
         self.request = {'source': row['source'], 'outdir': str(self.job_outdir),
                         'result': str(self.job_dir / 'result.json'), 'cancel': str(self.job_dir / 'cancel'),
+                        'stage': str(self.job_dir / 'stage.json'),
                         'workspace_prefix': self.workspace_prefix}
         request_file = self.job_dir / 'request.json'
         request_file.write_text(json.dumps(self.request, ensure_ascii=False), encoding='utf-8')
@@ -437,12 +438,26 @@ class MainWindow(QMainWindow):
             executable, args = sys.executable, ['--worker', str(request_file)]
         else:
             executable, args = sys.executable, [str(resource_root() / 'main.py'), '--worker', str(request_file)]
-        self.process.start(executable, args)
         self.watchdog = QTimer(self)
         self.watchdog.setSingleShot(True)
         self.watchdog.timeout.connect(self.on_timeout)
         self.watchdog.start(TIMEOUT * 1000)
+        self.stage_timer = QTimer(self)
+        self.stage_timer.timeout.connect(self.read_stage_file)
+        self.stage_timer.start(250)
+        self.process.start(executable, args)
         self.refresh()
+
+    def read_stage_file(self):
+        if not self.process:
+            return
+        try:
+            stage = json.loads(Path(self.request['stage']).read_text(encoding='utf-8')).get('stage')
+            if stage in ('text', 'image', 'pdf', 'office', 'html', 'saving') and stage != self.current_stage:
+                self.current_stage = stage
+                self.refresh()
+        except (OSError, ValueError, AttributeError):
+            pass
 
     def read_worker_output(self):
         if self.process:
@@ -492,6 +507,8 @@ class MainWindow(QMainWindow):
             return
         self.watchdog.stop()
         self.watchdog.deleteLater()
+        self.stage_timer.stop()
+        self.stage_timer.deleteLater()
         self.read_worker_output()
         try:
             result = json.loads(Path(self.request['result']).read_text(encoding='utf-8'))
@@ -593,11 +610,22 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
+def setup_font(app):
+    font = vendor_root() / 'fonts/NotoSansSC-Regular.ttf'
+    if font.is_file():
+        font_id = QFontDatabase.addApplicationFont(str(font))
+        families = QFontDatabase.applicationFontFamilies(font_id)
+        if families:
+            app.setFont(QFont(families[0], 10))
+            return
+    app.setFont(QFont('Microsoft YaHei' if sys.platform == 'win32' else 'Sans Serif', 10))
+
+
 def run():
     app = QApplication(sys.argv)
     app.setApplicationName('Any2PDF')
     app.setOrganizationName('Any2PDF')
-    app.setFont(QFont('Microsoft YaHei' if sys.platform == 'win32' else 'Sans Serif', 10))
+    setup_font(app)
     root = data_root()
     lock = QLockFile(str(root / 'application.lock'))
     lock.setStaleLockTime(0)
@@ -616,7 +644,7 @@ def run():
 def gui_smoke(screenshot):
     """Exercise native Qt plugins with an isolated profile on each CI desktop."""
     app = QApplication(sys.argv)
-    app.setFont(QFont('Microsoft YaHei' if sys.platform == 'win32' else 'Sans Serif', 10))
+    setup_font(app)
     with tempfile.TemporaryDirectory(prefix='any2pdf-gui-') as folder:
         window = MainWindow(data_dir=Path(folder))
         window.show()
