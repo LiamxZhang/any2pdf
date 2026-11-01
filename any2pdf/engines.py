@@ -153,8 +153,9 @@ class LocalDocumentHandler(SimpleHTTPRequestHandler):
 def add_html_font_fallback(page, font_url):
     """Trusted converter code runs while document-authored scripts stay disabled."""
     page.evaluate('''fontURL => {
-        // Snapshot before changing inherited styles so descendants keep their
-        // original font choices and get exactly one appended fallback.
+        // Print with the bundled font first. Generic system font fallback can
+        // select missing CJK glyphs on Linux before reaching an appended face.
+        // Snapshot before mutation to avoid repeatedly inheriting the prefix.
         const styles = Array.from(document.querySelectorAll('*'), element =>
             [element, getComputedStyle(element).fontFamily]);
         const sheet = document.createElement('style');
@@ -162,7 +163,7 @@ def add_html_font_fallback(page, font_url):
             fontURL + '") format("truetype"); font-weight: 100 900; font-style: normal;}';
         document.head.appendChild(sheet);
         for (const [element, family] of styles) {
-            element.style.setProperty('font-family', family + ', "Any2PDF CJK"', 'important');
+            element.style.setProperty('font-family', '"Any2PDF CJK", ' + family, 'important');
         }
         const probe = document.createElement('span');
         probe.id = '__any2pdf_font_probe';
@@ -176,7 +177,11 @@ def add_html_font_fallback(page, font_url):
     # Synchronous evaluation plus a bounded Python loop leaves font loading to
     # Chromium without permitting document-authored JavaScript to run.
     deadline = time.monotonic() + 30
-    while not page.evaluate('''() => document.fonts.check('16px "Any2PDF CJK"', '你好')'''):
+    while not page.evaluate('''() => {
+        const bundled = Array.from(document.fonts).filter(face => face.family.includes('Any2PDF CJK'));
+        return bundled.length > 0 && bundled.every(face => face.status === 'loaded') &&
+            document.fonts.check('16px "Any2PDF CJK"', '你好');
+    }'''):
         if time.monotonic() >= deadline:
             raise ConversionError('engine_failed', 'Bundled Chinese font did not load within 30 seconds')
         time.sleep(0.05)

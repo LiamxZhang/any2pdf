@@ -19,7 +19,7 @@ First-release targets are Windows 10/11 x86-64, Linux x86-64 with glibc 2.35+ an
 - PDF validation and copy; JPEG, PNG, BMP, TIFF, WebP and GIF (multiple frames become pages).
 - Plain text, CSV, JSON, Markdown, logs and common source code. UTF-8, BOM-marked UTF-16 and GB18030 are supported. CSV/Markdown use plain text layout.
 - DOC/DOCX, XLS/XLSX, PPT/PPTX, ODT/ODS/ODP and RTF via bundled LibreOffice. Complex Microsoft Office layout may differ.
-- HTML/HTM via bundled Chromium. Scripts and external network resources are disabled; only resources in the source folder are served.
+- HTML/HTM via bundled Chromium, prioritizing the bundled font for consistent Chinese rendering; typography may differ from the original. Scripts and external network resources are disabled; only resources in the source folder are served.
 
 Maximum input size is **10 GiB (10,737,418,240 bytes)** per file. PDF/text input is read in blocks; generated text/image pages are written to disk incrementally. Page indexes, fonts, individual images and third-party engines still require resources. This size limit does not guarantee every 10 GiB document can be converted. Ensure sufficient memory and disk space. Each task has a two-hour timeout.
 

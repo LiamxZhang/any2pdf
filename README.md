@@ -31,7 +31,7 @@ Linux 需要正常的桌面图形、字体和音频系统库，具体见 [第三
 | JPG / JPEG / PNG / BMP / TIFF / WebP / GIF | 转为 PDF，多帧图像逐页转换 |
 | TXT / CSV / JSON / Markdown / 日志 / 常见代码 | 文本分页，支持 UTF-8、带 BOM 的 UTF-16、GB18030；Markdown 和 CSV 按纯文本排版 |
 | DOC / DOCX / XLS / XLSX / PPT / PPTX / ODT / ODS / ODP / RTF | 随包 LibreOffice 转换，复杂排版可能与 Microsoft Office 有差异 |
-| HTML / HTM | 随包 Chromium 打印，加载同目录内的本地资源；禁用 JavaScript 和外部网络 |
+| HTML / HTM | 随包 Chromium 打印，优先使用随包字体，字体外观可能与原页面不同；加载同目录内的本地资源，禁用 JavaScript 和外部网络 |
 
 每个文件上限 **10 GiB（10,737,418,240 字节）**，大于十进制 10 GB。程序保留本地文件路径，分块读取文本/PDF、逐页写出文本与图像。页索引、单页图像、字体、Office 和 Chromium 仍然需要内存；输入上限不代表任何 10 GiB 文件都一定能完成。请预留足够内存与输出磁盘空间，单任务最长 2 小时。
 

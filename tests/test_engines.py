@@ -103,6 +103,11 @@ def test_real_html_pdf(tmp_path):
     result = Path(json.loads(stdout.decode('utf-8')))
     assert 'Local HTML' in PdfReader(result).pages[0].extract_text()
     assert '你好' in PdfReader(result).pages[0].extract_text()
+    # System CJK fonts can hide a broken webfont fallback on developer PCs.
+    # Both Latin and Chinese must actually use the bundled font in the PDF.
+    fonts = PdfReader(result).pages[0]['/Resources']['/Font'].values()
+    names = [str(font.get_object()['/BaseFont']).split('+')[-1] for font in fonts]
+    assert names and all(name.startswith('NotoSansSC') for name in names), names
 
 
 @pytest.mark.integration
