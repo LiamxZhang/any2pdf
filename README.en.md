@@ -6,9 +6,9 @@ A local desktop PDF converter for Windows, Linux and macOS. Choose files or drag
 
 ## Run
 
-Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.1-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
+Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.2-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
 
-Windows/Linux executables automatically unpack their bundled engines into temporary storage at startup and clean up on exit. Startup can take tens of seconds and requires several GB of free temporary disk space. macOS keeps the native app bundle and uses an archive to preserve signing and internal links. Separate SHA-256 files are no longer published. Releases appear only after all three native tests and frozen smoke checks pass.
+Windows/Linux executables automatically expand their runtime into a versioned cache under the application data directory on first launch. Later launches and conversions reuse it instead of unpacking again. First launch needs additional time and several GB of disk space. A missing cache is rebuilt automatically; upgrades use a separate cache. macOS keeps the native app bundle and uses an archive to preserve signing and internal links. Separate SHA-256 files are no longer published. Releases appear only after all three native tests and frozen smoke checks pass.
 
 First-release targets are Windows 10/11 x86-64, Linux x86-64 with glibc 2.35+ and a normal desktop environment (Ubuntu 22.04 baseline), and macOS 12+ Apple Silicon. Intel macOS is not included. Linux still requires desktop graphics/font/audio libraries; see [runtime notes](THIRD_PARTY.md). Unsigned downloads may require your operating system's first-launch approval.
 

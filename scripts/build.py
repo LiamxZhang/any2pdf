@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.metadata
+import json
 from pathlib import Path
 import platform
 import shutil
 import subprocess
 import sys
+import zipfile
 from any2pdf import __version__
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -113,6 +116,51 @@ exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name='Any2PDF',
     return spec
 
 
+def cached_portable(root: Path, system: str) -> Path:
+    """Keep the download self-contained, but extract the full runtime only once."""
+    from PyInstaller.archive.readers import CArchiveReader
+    scratch = root / '.local'
+    scratch.mkdir(exist_ok=True)
+    payload = scratch / 'runtime.zip'
+    runtime = root / 'dist/Any2PDF'
+    identity = hashlib.sha256()
+    with zipfile.ZipFile(payload, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as archive:
+        for file in sorted(runtime.rglob('*')):
+            if file.is_file():
+                relative = file.relative_to(runtime).as_posix()
+                with file.open('rb') as stream:
+                    digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+                identity.update((relative + '\0' + digest + '\n').encode())
+                archive.write(file, relative)
+        archive.writestr('__any2pdf_runtime__.json', json.dumps({
+            'key': identity.hexdigest(),
+            'executable': 'Any2PDF.exe' if system == 'Windows' else 'Any2PDF',
+        }))
+    subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean',
+                    '--onefile', '--windowed', '--name', 'Any2PDF-bootstrap',
+                    str(root / 'scripts/portable_launcher.py')], cwd=root, check=True)
+    suffix = '.exe' if system == 'Windows' else ''
+    bootstrap = root / 'dist' / ('Any2PDF-bootstrap' + suffix)
+    reader = CArchiveReader(str(bootstrap))
+    with bootstrap.open('rb') as source:
+        source.seek(reader._end_offset - reader._COOKIE_LENGTH)
+        cookie = list(__import__('struct').unpack(reader._COOKIE_FORMAT, source.read(reader._COOKIE_LENGTH)))
+    output = root / 'dist' / ('Any2PDF-portable' + suffix)
+    shutil.copy2(bootstrap, output)
+    with output.open('ab') as target, payload.open('rb') as source:
+        shutil.copyfileobj(source, target, length=1024 * 1024)
+        # A new cookie keeps the bootloader's lookup at EOF, so startup does
+        # not scan hundreds of MB backwards. Original TOC offsets stay valid.
+        cookie[1] = target.tell() + reader._COOKIE_LENGTH - reader._start_offset
+        target.write(__import__('struct').pack(reader._COOKIE_FORMAT, *cookie))
+    output.chmod(0o755)
+    # Validate both independently readable archives before shipping.
+    assert CArchiveReader(str(output)).toc == reader.toc
+    with zipfile.ZipFile(output) as archive:
+        assert json.loads(archive.read('__any2pdf_runtime__.json'))['key'] == identity.hexdigest()
+    return output
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--skip-fetch', action='store_true')
@@ -125,12 +173,10 @@ def main() -> None:
         raise RuntimeError('Vendor payload missing; run python -m scripts.fetch_engines')
     collect_licenses(vendor / 'licenses')
     system = platform.system()
-    if system == 'Darwin':
-        subprocess.run(pyinstaller_command(ROOT), cwd=ROOT, check=True)
-        bundle_vendor(vendor, ROOT / 'dist', system)
-    else:
-        spec = onefile_spec(ROOT, vendor)
-        subprocess.run([sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', str(spec)], cwd=ROOT, check=True)
+    subprocess.run(pyinstaller_command(ROOT), cwd=ROOT, check=True)
+    bundle_vendor(vendor, ROOT / 'dist', system)
+    if system != 'Darwin':
+        cached_portable(ROOT, system)
     if system == 'Darwin':
         app = ROOT / 'dist/Any2PDF.app'
         # Signing must see the complete Chromium/LibreOffice apps and framework
@@ -146,10 +192,10 @@ def main() -> None:
         release.mkdir(exist_ok=True)
         if system == 'Windows':
             archive = release / f'{name}.exe'
-            shutil.copy2(ROOT / 'dist/Any2PDF.exe', archive)
+            shutil.copy2(ROOT / 'dist/Any2PDF-portable.exe', archive)
         elif system == 'Linux':
             archive = release / name
-            shutil.copy2(ROOT / 'dist/Any2PDF', archive)
+            shutil.copy2(ROOT / 'dist/Any2PDF-portable', archive)
         else:
             # macOS presents the signed bundle as one app; tar preserves symlinks.
             archive = Path(shutil.make_archive(str(release / name), 'gztar',

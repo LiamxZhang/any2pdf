@@ -19,10 +19,10 @@ jobs:
         include:
           - os: windows-latest
             target: Windows-x86_64
-            executable: dist/Any2PDF.exe
+            executable: dist/Any2PDF-portable.exe
           - os: ubuntu-22.04
             target: Linux-x86_64
-            executable: dist/Any2PDF
+            executable: dist/Any2PDF-portable
           - os: macos-14
             target: Darwin-arm64
             executable: dist/Any2PDF.app/Contents/MacOS/Any2PDF

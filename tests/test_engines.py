@@ -125,3 +125,17 @@ def test_real_office_pdf(tmp_path):
     assert 'Office conversion test' in PdfReader(result).pages[0].extract_text()
     assert '你好' in PdfReader(result).pages[0].extract_text()
     assert not list((tmp_path / 'out').glob('.any2pdf-*'))
+
+
+@pytest.mark.parametrize('layout', ['chrome-win/chrome.exe', 'chrome-linux/chrome', 'chrome-mac/Chromium.app/Contents/MacOS/Chromium'])
+def test_capability_check_does_not_start_playwright(tmp_path, monkeypatch, layout):
+    import sys
+    import any2pdf.engines as engines
+    root = tmp_path / 'vendor'
+    binary = root / 'chromium/chromium-1194' / layout
+    binary.parent.mkdir(parents=True)
+    binary.write_bytes(b'engine')
+    monkeypatch.setattr(engines, 'vendor_root', lambda: root)
+    monkeypatch.setattr(engines, 'office_executable', lambda: None)
+    monkeypatch.setitem(sys.modules, 'playwright.sync_api', None)
+    assert engines.capabilities() == {'office': False, 'html': True}

@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 
 
@@ -58,11 +59,14 @@ def main() -> None:
         for key in ('ANY2PDF_VENDOR', 'ANY2PDF_LIBREOFFICE', 'PYTHONPATH', 'PLAYWRIGHT_BROWSERS_PATH'):
             env.pop(key, None)
         env.update(ANY2PDF_DATA=str(root / 'app-data'), LOCALAPPDATA=str(root / 'app-data'), XDG_DATA_HOME=str(root / 'app-data'))
+        cached_files = None
         for index, source in enumerate(sources):
             result = root / f'result-{index}.json'
             request = root / f'request-{index}.json'
             request.write_text(json.dumps({'source': str(source), 'outdir': str(root / 'output'), 'result': str(result), 'cancel': str(root / 'cancel')}), encoding='utf-8')
+            started = time.monotonic()
             proc = subprocess.run([str(executable), '--worker', str(request)], cwd=root, env=env, timeout=240, capture_output=True)
+            duration = time.monotonic() - started
             if not result.exists():
                 raise RuntimeError(f'{source.name}: worker exited {proc.returncode} without result: {proc.stderr!r}')
             report = json.loads(result.read_text(encoding='utf-8'))
@@ -74,7 +78,17 @@ def main() -> None:
                 raise RuntimeError(f'{source.name}: empty PDF')
             if source.suffix in ('.txt', '.html', '.docx', '.rtf', '.pdf') and 'Any2PDF' not in ''.join(page.extract_text() or '' for page in pdf.pages):
                 raise RuntimeError(f'{source.name}: expected text missing from PDF')
-            print(f'PASS {source.name}: {len(pdf.pages)} page(s)', flush=True)
+            print(f'PASS {source.name}: {len(pdf.pages)} page(s), total={duration:.2f}s, conversion={report["elapsed"]:.2f}s', flush=True)
+            if 'portable' in executable.name.lower() and sys.platform != 'darwin':
+                runtime_root = root / 'app-data/Any2PDF/runtime'
+                markers = list(runtime_root.glob('*/.complete'))
+                if len(markers) != 1:
+                    raise RuntimeError('Expected exactly one complete cached runtime')
+                marker = markers[0]
+                current = (str(marker), marker.stat().st_mtime_ns)
+                if cached_files is not None and cached_files != current:
+                    raise RuntimeError('Runtime was unnecessarily re-extracted between conversions')
+                cached_files = current
         damaged = root / 'damaged.pdf'
         damaged.write_bytes(b'%PDF-1.7\nnot a PDF document')
         unsupported = root / 'unsupported.bin'

@@ -38,6 +38,14 @@ def office_executable():
     if override:
         return override if Path(override).is_file() else None
     roots = [vendor_root() / 'libreoffice']
+    known = (
+        roots[0] / 'LibreOffice/program/soffice.exe',
+        roots[0] / 'opt/libreoffice25.8/program/soffice',
+        roots[0] / 'LibreOffice.app/Contents/MacOS/soffice',
+    )
+    for candidate in known:
+        if candidate.is_file():
+            return str(candidate)
     for root in roots:
         for pattern in ('**/soffice.exe', '**/program/soffice', '**/MacOS/soffice'):
             matches = sorted(root.glob(pattern))
@@ -233,13 +241,14 @@ def html_pdf(source, target, cancelled):
 
 
 def capabilities():
+    # Capability probing runs during window creation. Checking the pinned
+    # layout directly avoids importing Playwright and launching its driver.
     bundled = vendor_root() / 'chromium'
     if bundled.exists():
         os.environ['PLAYWRIGHT_BROWSERS_PATH'] = str(bundled)
-    try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as p:
-            browser = Path(p.chromium.executable_path).is_file()
-    except Exception:
-        browser = False
-    return {'office': bool(office_executable()), 'html': browser}
+    browser_candidates = (
+        *bundled.glob('chromium-*/chrome-win*/chrome.exe'),
+        *bundled.glob('chromium-*/chrome-linux*/chrome'),
+        *bundled.glob('chromium-*/chrome-mac*/Chromium.app/Contents/MacOS/Chromium'),
+    )
+    return {'office': bool(office_executable()), 'html': any(p.is_file() for p in browser_candidates)}

@@ -47,7 +47,8 @@ QLineEdit, QComboBox { background: white; border: 1px solid #D9DFEA; border-radi
 QComboBox QAbstractItemView { background-color: #FFFFFF; color: #1E293B; selection-background-color: #EDEBFF; selection-color: #1E293B; border: 1px solid #D9DFEA; outline: 0; }
 QComboBox QAbstractItemView::item { background-color: #FFFFFF; color: #1E293B; min-height: 30px; }
 QComboBox QAbstractItemView::item:selected { background-color: #EDEBFF; }
-QTableWidget { border: 0; gridline-color: #EEF1F6; background: white; selection-background-color: #EDEBFF; selection-color: #1E293B; }
+QTableWidget { border: 0; gridline-color: #EEF1F6; background: white; selection-background-color: #DAD6FF; selection-color: #172554; }
+QTableWidget::item:selected, QTableWidget::item:selected:!active { background: #635BEB; color: #FFFFFF; border: 1px solid #5146D4; }
 QHeaderView::section { background: #F8F9FC; border: 0; border-bottom: 1px solid #E4E8F1; padding: 10px; text-align: left; color: #64748B; }
 QProgressBar { border: 0; background: #EAE8FC; border-radius: 3px; max-height: 6px; }
 QProgressBar::chunk { background: #635BEB; border-radius: 3px; }
@@ -231,7 +232,6 @@ class MainWindow(QMainWindow):
         self.added_label = QLabel()
         self.added_label.setStyleSheet('color: #635BEB;')
         upload.addWidget(self.added_label)
-        upload.addWidget(self.label('limit', 'hint'))
         self.queue_page = QWidget()
         self.tabs.addTab(self.queue_page, '')
         queue_layout = QVBoxLayout(self.queue_page)

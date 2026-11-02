@@ -105,6 +105,7 @@ def text_pdf(source, target, cancelled):
     pdf.setTitle(source.name)
     pdf.setFont(font, 10)
     y, width_used, line = 795, 0, []
+    widths = {}
     def flush_line():
         nonlocal y, width_used
         pdf.drawString(42, y, ''.join(line))
@@ -126,7 +127,13 @@ def text_pdf(source, target, cancelled):
                         continue
                     if char == '\t':
                         char = '    '
-                    width = pdfmetrics.stringWidth(char, font, 10)
+                    width = widths.get(char)
+                    if width is None:
+                        width = pdfmetrics.stringWidth(char, font, 10)
+                        # Bounded cache: repeated characters need no repeated
+                        # font metric lookup, even for a multi-GB text file.
+                        if len(widths) < 4096:
+                            widths[char] = width
                     if char == '\n' or width_used + width > 511:
                         flush_line()
                         if char == '\n':

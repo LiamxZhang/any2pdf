@@ -154,3 +154,28 @@ def test_delete_one_history_record_preserves_other_records_and_files(app, tmp_pa
     assert not w.history.delete_finished(queued)
     assert len(w.history.list()) == 2
     w.close()
+
+
+@pytest.mark.parametrize('page', [1, 2])
+def test_selected_row_has_visible_feedback_after_losing_focus(app, tmp_path, page):
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    w = MainWindow(data_dir=tmp_path / 'data', probe_engines=False)
+    source = tmp_path / 'small.txt'
+    source.write_text('hello')
+    w.add_files([str(source)])
+    w.tabs.setCurrentIndex(page)
+    w.show()
+    table = w.queue_table if page == 1 else w.history_table
+    app.processEvents()
+    table.selectRow(0)
+    w.language.setFocus()
+    app.processEvents()
+    rect = table.visualItemRect(table.item(0, 0))
+    color = table.viewport().grab().toImage().pixelColor(rect.right()-8, rect.center().y()).name()
+    assert color == '#635beb', color
+    w.refresh()
+    app.processEvents()
+    assert table.selectionModel().selectedRows()[0].row() == 0
+    assert not any('10 GiB' in label.text() for label in w.upload_page.findChildren(__import__('PySide6.QtWidgets', fromlist=['QLabel']).QLabel))
+    w.close()

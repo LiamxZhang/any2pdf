@@ -7,7 +7,7 @@ STRINGS = {
     'delete_record': ('删除记录', 'Delete record'),
     'drop_hint': ('或选择本地文件，支持批量添加', 'Or choose local files. Multiple files welcome.'),
     'choose': ('选择文件', 'Choose files'),
-    'limit': ('单文件 ≤ 10 GiB', 'Up to 10 GiB per file'),
+    'limit': ('', ''),
     'formats': ('支持 PDF、图片、文本与代码、Office 文档及 HTML。Markdown 按纯文本排版。', 'PDF, images, text & code, Office documents, and HTML. Markdown is rendered as plain text.'),
     'limits_note': ('10 GiB 为输入上限；复杂文件的转换能力取决于引擎、内存及磁盘空间。', '10 GiB is the input limit. Conversion depends on the engine, memory, and disk space.'),
     'engine_title': ('转换引擎', 'Conversion engines'),
