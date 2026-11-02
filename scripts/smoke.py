@@ -44,9 +44,10 @@ def main() -> None:
         raise SystemExit(f'Frozen executable missing: {executable}')
     bundle = executable.parents[2] if executable.parent.name == 'MacOS' else executable.parent
     office = list(bundle.rglob('soffice.exe')) + list(bundle.rglob('soffice'))
-    if not office:
+    single_file = executable.parent.name == 'dist'
+    if not single_file and not office:
         raise RuntimeError('Frozen bundle is missing LibreOffice')
-    if not list(bundle.rglob('NotoSansSC-Regular.ttf')):
+    if not single_file and not list(bundle.rglob('NotoSansSC-Regular.ttf')):
         raise RuntimeError('Frozen bundle is missing the Chinese font')
     with tempfile.TemporaryDirectory(prefix='any2pdf-smoke-') as folder:
         root = Path(folder)
@@ -88,7 +89,7 @@ def main() -> None:
             result = root / f'error-result-{index}.json'
             request = root / f'error-request-{index}.json'
             request.write_text(json.dumps({'source': str(source), 'outdir': str(root / 'output'), 'result': str(result), 'cancel': str(root / 'cancel')}), encoding='utf-8')
-            proc = subprocess.run([str(executable), '--worker', str(request)], cwd=root, env=env, timeout=60, capture_output=True)
+            proc = subprocess.run([str(executable), '--worker', str(request)], cwd=root, env=env, timeout=240, capture_output=True)
             if not result.exists():
                 raise RuntimeError(f'{source.name}: no error result; exit={proc.returncode}, stdout={proc.stdout!r}, stderr={proc.stderr!r}')
             report = json.loads(result.read_text(encoding='utf-8'))
@@ -100,7 +101,7 @@ def main() -> None:
             # Exercise the native platform plugin, including xcb under Xvfb.
             env.pop('QT_QPA_PLATFORM', None)
             try:
-                proc = subprocess.run([str(executable), '--gui-smoke', str(screenshot)], cwd=root, env=env, timeout=90, capture_output=True)
+                proc = subprocess.run([str(executable), '--gui-smoke', str(screenshot)], cwd=root, env=env, timeout=240, capture_output=True)
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError(f'GUI smoke timed out; stdout={exc.stdout!r}, stderr={exc.stderr!r}') from exc
             if proc.returncode or not screenshot.exists() or screenshot.stat().st_size < 100:

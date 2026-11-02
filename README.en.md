@@ -6,13 +6,15 @@ A local desktop PDF converter for Windows, Linux and macOS. Choose files or drag
 
 ## Run
 
-Download the full portable archive for your system from Releases, extract it, and keep the entire folder. Launch `Any2PDF.exe` on Windows, `Any2PDF/Any2PDF` on Linux, or `Any2PDF.app` on macOS. End users do not install Python or conversion engines. Releases appear only after every target build and frozen application smoke test succeeds.
+Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.1-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
+
+Windows/Linux executables automatically unpack their bundled engines into temporary storage at startup and clean up on exit. Startup can take tens of seconds and requires several GB of free temporary disk space. macOS keeps the native app bundle and uses an archive to preserve signing and internal links. Separate SHA-256 files are no longer published. Releases appear only after all three native tests and frozen smoke checks pass.
 
 First-release targets are Windows 10/11 x86-64, Linux x86-64 with glibc 2.35+ and a normal desktop environment (Ubuntu 22.04 baseline), and macOS 12+ Apple Silicon. Intel macOS is not included. Linux still requires desktop graphics/font/audio libraries; see [runtime notes](THIRD_PARTY.md). Unsigned downloads may require your operating system's first-launch approval.
 
 1. Add local files using Upload or drag and drop.
 2. Choose an output folder on Convert and start the queue.
-3. Open outputs, inspect failure diagnostics, or retry from History. Clearing history never deletes originals or generated PDFs.
+3. Open outputs, inspect failure diagnostics, or retry from History. Delete a selected history record or clear finished history without deleting originals or generated PDFs.
 
 ## Formats
 

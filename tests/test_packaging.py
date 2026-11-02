@@ -150,3 +150,27 @@ def test_office_runtime_dll_copy_ignores_non_windows_tree(tmp_path):
     vendor = tmp_path / 'vendor'
     (vendor / 'libreoffice/opt/libreoffice25.8/program').mkdir(parents=True)
     engines.bundle_office_windows_runtime(vendor)
+
+
+def test_onefile_engines_stay_data_and_posix_permissions_are_restored(tmp_path):
+    import subprocess
+    import sys
+    vendor = tmp_path / 'vendor'
+    vendor.mkdir()
+    engine = vendor / 'engine'
+    engine.write_bytes(b'engine content')
+    engine.chmod(0o755)
+    spec = build.onefile_spec(tmp_path, vendor)
+    code = spec.read_text(encoding='utf-8')
+    assert code.index('a = Analysis') < code.index('a.datas += Tree')
+    assert "typecode='DATA'" in code
+    assert 'a.binaries, a.datas' in code
+    compile(code, str(spec), 'exec')
+    # Execute the generated hook against an extracted payload without relying
+    # on the build host's umask. Windows has no POSIX permission requirement.
+    if sys.platform != 'win32':
+        engine.chmod(0o600)
+        hook = tmp_path / '.local/vendor_permissions.py'
+        subprocess.run([sys.executable, '-c',
+            f'import sys; sys._MEIPASS={str(tmp_path)!r}; exec(open({str(hook)!r}).read())'], check=True)
+        assert engine.stat().st_mode & 0o100

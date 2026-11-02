@@ -32,6 +32,11 @@ class History:
     def list(self):
         return [dict(row) for row in self.db.execute('SELECT * FROM tasks ORDER BY id DESC')]
 
+    def delete_finished(self, task):
+        cursor = self.db.execute("DELETE FROM tasks WHERE id=? AND status NOT IN ('queued','running')", (task,))
+        self.db.commit()
+        return cursor.rowcount == 1
+
     def clear_finished(self):
         deleted = [row[0] for row in self.db.execute("SELECT id FROM tasks WHERE status NOT IN ('queued','running')")]
         self.db.execute("DELETE FROM tasks WHERE status NOT IN ('queued','running')")

@@ -100,3 +100,57 @@ def test_cancelling_text_worker_cleans_temporary_output(app, tmp_path):
     assert not list((tmp_path / 'output').glob('*.pdf'))
     assert not list((tmp_path / 'output').glob('.any2pdf-*'))
     w.close()
+
+
+def test_drop_hover_leave_and_actual_drop_feedback(app, tmp_path):
+    from PySide6.QtCore import Qt, QPoint, QPointF
+    from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
+    source = tmp_path / 'test.txt'
+    source.write_text('hello')
+    w = MainWindow(data_dir=tmp_path / 'data', probe_engines=False)
+    w.show()
+    mime = QMimeData()
+    mime.setUrls([QUrl.fromLocalFile(str(source))])
+    enter = QDragEnterEvent(QPoint(30, 30), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
+    QApplication.sendEvent(w.drop_area, enter)
+    assert enter.isAccepted()
+    assert w.drop_area.property('dragActive') is True
+    assert w.drop_title.text() == '松开以添加文件'
+    QApplication.sendEvent(w.drop_area, QDragLeaveEvent())
+    assert w.drop_area.property('dragActive') is False
+    QApplication.sendEvent(w.drop_area, QDragEnterEvent(QPoint(30, 30), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier))
+    drop = QDropEvent(QPointF(30, 30), Qt.CopyAction, mime, Qt.LeftButton, Qt.NoModifier)
+    QApplication.sendEvent(w.drop_area, drop)
+    assert drop.isAccepted()
+    assert w.drop_area.property('dragActive') is False
+    assert len(w.history.list()) == 1
+    assert '1' in w.added_label.text()
+    w.close()
+
+
+def test_delete_one_history_record_preserves_other_records_and_files(app, tmp_path):
+    w = MainWindow(data_dir=tmp_path / 'data', probe_engines=False)
+    source = tmp_path / 'original.txt'
+    output = tmp_path / 'result.pdf'
+    source.write_text('original')
+    output.write_bytes(b'keep this file')
+    first = w.history.add(source, tmp_path)
+    w.history.update(first, status='success', output=str(output))
+    second = w.history.add(source, tmp_path)
+    w.history.update(second, status='failed', error_code='unsupported')
+    w.session_ids.update((first, second))
+    w.refresh()
+    w.history_table.selectRow(0)
+    assert w.delete_button.isEnabled()
+    w.delete_button.click()
+    assert [r['id'] for r in w.history.list()] == [first]
+    assert source.read_text() == 'original'
+    assert output.read_bytes() == b'keep this file'
+    assert second not in w.session_ids
+    queued = w.history.add(source, tmp_path)
+    w.refresh()
+    w.history_table.selectRow(0)
+    assert not w.delete_button.isEnabled()
+    assert not w.history.delete_finished(queued)
+    assert len(w.history.list()) == 2
+    w.close()

@@ -10,8 +10,8 @@ import uuid
 import psutil
 import tempfile
 
-from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QLockFile
-from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase
+from PySide6.QtCore import Qt, QProcess, QTimer, QUrl, QLockFile, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QFont, QFontDatabase, QPalette
 from PySide6.QtWidgets import (QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout,
     QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
     QTabWidget, QTableWidget, QTableWidgetItem, QTextEdit, QDialog, QVBoxLayout, QWidget)
@@ -27,13 +27,12 @@ from .paths import data_root, resource_root, vendor_root
 STYLE = '''
 QMainWindow, QDialog { background: #F6F7FB; }
 QWidget { color: #1E293B; font-size: 13px; }
-QLabel#brand { font-size: 23px; font-weight: 800; color: #0F172A; }
-QLabel#tagline { font-size: 30px; font-weight: 700; color: #13203B; }
 QLabel#subtitle, QLabel#hint { color: #64748B; }
 QLabel#eyebrow { color: #635BEB; font-weight: 700; font-size: 12px; }
 QLabel#dropTitle { font-size: 24px; font-weight: 600; }
 QLabel#dropIcon { font-size: 42px; color: #635BEB; }
 QFrame#drop { background: #FCFCFF; border: 2px dashed #B5B3ED; border-radius: 16px; }
+QFrame#drop[dragActive="true"] { background: #EDEBFF; border: 2px solid #635BEB; }
 QFrame#card { background: white; border: 1px solid #E4E8F1; border-radius: 12px; }
 QTabWidget::pane { background: white; border: 1px solid #E4E8F1; border-radius: 12px; }
 QTabBar::tab { padding: 13px 25px; color: #64748B; border-bottom: 3px solid transparent; }
@@ -45,6 +44,9 @@ QPushButton#primary { background: #635BEB; border-color: #635BEB; color: white; 
 QPushButton#primary:hover { background: #5146D4; }
 QPushButton#primary:disabled { background: #B9B5EC; border-color: #B9B5EC; }
 QLineEdit, QComboBox { background: white; border: 1px solid #D9DFEA; border-radius: 6px; padding: 8px; }
+QComboBox QAbstractItemView { background-color: #FFFFFF; color: #1E293B; selection-background-color: #EDEBFF; selection-color: #1E293B; border: 1px solid #D9DFEA; outline: 0; }
+QComboBox QAbstractItemView::item { background-color: #FFFFFF; color: #1E293B; min-height: 30px; }
+QComboBox QAbstractItemView::item:selected { background-color: #EDEBFF; }
 QTableWidget { border: 0; gridline-color: #EEF1F6; background: white; selection-background-color: #EDEBFF; selection-color: #1E293B; }
 QHeaderView::section { background: #F8F9FC; border: 0; border-bottom: 1px solid #E4E8F1; padding: 10px; text-align: left; color: #64748B; }
 QProgressBar { border: 0; background: #EAE8FC; border-radius: 3px; max-height: 6px; }
@@ -60,6 +62,46 @@ def human_size(size):
         if size < 1024 or unit == 'GiB':
             return f'{size:.1f} {unit}'
         size /= 1024
+
+
+class DropArea(QFrame):
+    filesDropped = Signal(object)
+    activeChanged = Signal(bool)
+
+    def __init__(self):
+        super().__init__()
+        self.setObjectName('drop')
+        self.setAcceptDrops(True)
+        self.set_active(False)
+
+    def set_active(self, active):
+        self.setProperty('dragActive', active)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.update()
+        self.activeChanged.emit(active)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls() and any(u.isLocalFile() for u in event.mimeData().urls()):
+            self.set_active(True)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        self.dragEnterEvent(event)
+
+    def dragLeaveEvent(self, event):
+        self.set_active(False)
+        event.accept()
+
+    def dropEvent(self, event):
+        self.set_active(False)
+        if any(u.isLocalFile() for u in event.mimeData().urls()):
+            self.filesDropped.emit(event.mimeData())
+            event.acceptProposedAction()
+        else:
+            event.ignore()
 
 
 class MainWindow(QMainWindow):
@@ -86,8 +128,8 @@ class MainWindow(QMainWindow):
         self.current_stage = 'starting'
         self.engines = capabilities() if probe_engines else {'office': False, 'html': False}
         self.setWindowTitle(f'Any2PDF · {__version__}')
-        self.resize(1120, 810)
-        self.setMinimumSize(900, 700)
+        self.resize(1040, 700)
+        self.setMinimumSize(900, 620)
         self.setAcceptDrops(True)
         self.setStyleSheet(STYLE)
         self.labels = []
@@ -144,21 +186,23 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(34, 24, 34, 20)
         layout.setSpacing(16)
         header = QHBoxLayout()
-        brand = QLabel('◈  Any2PDF')
-        brand.setObjectName('brand')
-        header.addWidget(brand)
         header.addStretch()
-        badge = QLabel('LOCAL / OFFLINE')
-        badge.setStyleSheet('color: #51816C; background: #E8F3ED; border-radius: 5px; padding: 5px 9px; font-size: 11px;')
-        header.addWidget(badge)
         self.language = QComboBox()
         self.language.addItems(['简体中文', 'English'])
+        # A non-native popup and explicit palette avoid OS dark popup colors.
+        self.language.setStyleSheet('QComboBox { combobox-popup: 0; background: #FFFFFF; color: #1E293B; }')
+        palette = self.language.view().palette()
+        for group in (QPalette.Active, QPalette.Inactive, QPalette.Disabled):
+            palette.setColor(group, QPalette.Base, QColor('#FFFFFF'))
+            palette.setColor(group, QPalette.Window, QColor('#FFFFFF'))
+            palette.setColor(group, QPalette.Text, QColor('#1E293B'))
+            palette.setColor(group, QPalette.Highlight, QColor('#EDEBFF'))
+            palette.setColor(group, QPalette.HighlightedText, QColor('#1E293B'))
+        self.language.view().setPalette(palette)
         self.language.setCurrentIndex(1 if self.lang == 'en' else 0)
         self.language.currentIndexChanged.connect(self.change_language)
         header.addWidget(self.language)
         layout.addLayout(header)
-        layout.addWidget(self.label('tagline', 'tagline'))
-        layout.addWidget(self.label('subtitle', 'subtitle'))
         self.tabs = QTabWidget()
         layout.addWidget(self.tabs, 1)
         self.upload_page = QWidget()
@@ -166,43 +210,28 @@ class MainWindow(QMainWindow):
         upload = QVBoxLayout(self.upload_page)
         upload.setContentsMargins(26, 26, 26, 22)
         upload.setSpacing(16)
-        drop = QFrame()
-        drop.setObjectName('drop')
+        self.drop_area = drop = DropArea()
+        drop.filesDropped.connect(self.add_mime)
+        drop.activeChanged.connect(self.update_drop_title)
         drop.setMinimumHeight(225)
         content = QVBoxLayout(drop)
         content.setContentsMargins(25, 20, 25, 20)
         content.setSpacing(9)
-        icon = QLabel('↥')
-        icon.setObjectName('dropIcon')
-        icon.setAlignment(Qt.AlignCenter)
-        content.addWidget(icon)
-        for key, name in [('drop_title', 'dropTitle'), ('drop_hint', 'hint')]:
-            label = self.label(key, name)
-            label.setAlignment(Qt.AlignCenter)
-            content.addWidget(label)
+        content.addStretch()
+        self.drop_title = self.label('drop_title', 'dropTitle')
+        self.drop_title.setAlignment(Qt.AlignCenter)
+        content.addWidget(self.drop_title)
         row = QHBoxLayout()
         row.addStretch()
         row.addWidget(self.button('choose', self.choose_files, True))
         row.addStretch()
         content.addLayout(row)
-        upload.addWidget(drop)
+        content.addStretch()
+        upload.addWidget(drop, 1)
         self.added_label = QLabel()
         self.added_label.setStyleSheet('color: #635BEB;')
         upload.addWidget(self.added_label)
         upload.addWidget(self.label('limit', 'hint'))
-        upload.addWidget(self.label('formats'))
-        upload.addWidget(self.label('limits_note', 'hint'))
-        card = QFrame()
-        card.setObjectName('card')
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(16, 12, 16, 12)
-        card_layout.addWidget(self.label('engine_title', 'eyebrow'))
-        self.engine_label = QLabel()
-        self.engine_label.setWordWrap(True)
-        card_layout.addWidget(self.engine_label)
-        card_layout.addWidget(self.label('html_notice', 'hint'))
-        upload.addWidget(card)
-        upload.addStretch()
         self.queue_page = QWidget()
         self.tabs.addTab(self.queue_page, '')
         queue_layout = QVBoxLayout(self.queue_page)
@@ -249,6 +278,9 @@ class MainWindow(QMainWindow):
         actions.addWidget(self.button('retry', self.retry_selected))
         actions.addWidget(self.button('details', lambda: self.show_details(self.history_table)))
         actions.addStretch()
+        self.delete_button = self.button('delete_record', self.delete_history_record)
+        actions.addWidget(self.delete_button)
+        self.history_table.itemSelectionChanged.connect(self.update_delete_button)
         actions.addWidget(self.button('clear', self.clear_history))
         history_layout.addLayout(actions)
         self.progress = QProgressBar()
@@ -259,7 +291,6 @@ class MainWindow(QMainWindow):
         footer = QHBoxLayout()
         self.status_label = QLabel()
         footer.addWidget(self.status_label, 1)
-        footer.addWidget(self.label('local_notice', 'hint'))
         layout.addLayout(footer)
 
     def make_table(self):
@@ -300,9 +331,7 @@ class MainWindow(QMainWindow):
             self.status_filter.addItem(self.text(key), key)
         self.status_filter.setCurrentIndex(max(0, index))
         self.status_filter.blockSignals(False)
-        self.engine_label.setText('   •   '.join([self.text('builtin'),
-            self.text('office_ready' if self.engines['office'] else 'office_missing'),
-            self.text('html_ready' if self.engines['html'] else 'html_missing')]))
+        self.update_drop_title(bool(self.drop_area.property('dragActive')))
 
     def save_settings(self):
         self.settings.update(lang=self.lang, outdir=self.outdir.text())
@@ -320,11 +349,20 @@ class MainWindow(QMainWindow):
             self.outdir.setText(folder)
             self.save_settings()
 
+    def update_drop_title(self, active):
+        self.drop_title.setText(self.text('drop_release' if active else 'drop_title'))
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and any(url.isLocalFile() for url in event.mimeData().urls()):
+            self.drop_area.set_active(True)
             event.acceptProposedAction()
 
+    def dragLeaveEvent(self, event):
+        self.drop_area.set_active(False)
+        event.accept()
+
     def dropEvent(self, event):
+        self.drop_area.set_active(False)
         self.add_mime(event.mimeData())
         event.acceptProposedAction()
 
@@ -362,7 +400,8 @@ class MainWindow(QMainWindow):
         self.browse_button.setEnabled(not busy)
         self.outdir.setReadOnly(busy)
         self.progress.setVisible(busy)
-        self.added_label.setText(self.text('selected_count') + str(len(self.session_ids)))
+        self.added_label.setText(self.text('selected_count') + str(len(self.session_ids)) if self.session_ids else '')
+        self.update_delete_button()
         if busy:
             row = next((r for r in rows if r['id'] == self.active), {})
             self.status_label.setText(self.text('working') + Path(row.get('source', '')).name + '  ·  ' + self.stage_text())
@@ -553,6 +592,20 @@ class MainWindow(QMainWindow):
         if row and row['status'] not in ('queued', 'running'):
             self.add_files([row['source']])
             self.tabs.setCurrentIndex(1)
+
+    def update_delete_button(self):
+        row = self.selected_row(self.history_table)
+        self.delete_button.setEnabled(bool(row and row['status'] not in ('queued', 'running')))
+
+    def delete_history_record(self):
+        task = self.selected_id(self.history_table)
+        if task is not None and self.history.delete_finished(task):
+            self.session_ids.discard(task)
+            try:
+                (self.root / 'logs' / f'{task}.json').unlink(missing_ok=True)
+            except OSError as exc:
+                QMessageBox.warning(self, self.text('error_title'), str(exc))
+            self.refresh()
 
     def clear_history(self):
         if QMessageBox.question(self, 'Any2PDF', self.text('clear_question')) == QMessageBox.Yes:
