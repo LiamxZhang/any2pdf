@@ -26,7 +26,7 @@ Verified on 2026-11-02 (Asia/Shanghai): [release v0.1.0](https://github.com/Liam
 | Linux x86-64 / Ubuntu 22.04 | 52 passed | Passed | Passed (xcb under Xvfb) |
 | macOS arm64 | 52 passed | Passed | Passed |
 
-Each frozen executable converted DOCX, RTF, existing PDF, PNG, local HTML and Chinese TXT; rejected damaged PDF, unsupported input and encrypted PDF with the expected specific error codes. Real engine tests also verified Chinese HTML text extraction and embedded NotoSansSC font identity. All three archives and their SHA-256 files are uploaded release assets.
+Each frozen executable converted DOCX, RTF, existing PDF, PNG, local HTML and Chinese TXT; rejected damaged PDF, unsupported input and encrypted PDF with the expected specific error codes. Real engine tests also verified Chinese HTML text extraction and embedded NotoSansSC font identity. All three archives and their SHA-256 files were uploaded at initial publication. Separate checksum assets were removed on 2026-11-02 at the user's request.
 
 ## Practical limits
 
@@ -35,3 +35,18 @@ Each frozen executable converted DOCX, RTF, existing PDF, PNG, local HTML and Ch
 - Native signing/notarization certificates are not configured. Standard OS downloaded-app approval may be required.
 - Office layout depends on LibreOffice. HTML excludes scripts and remote resources. CSV and Markdown use plain text layout.
 - No claim is made that every private format, encrypted file, pathological document, or 10 GiB input can be converted on all machines. Engine failures remain explicit and diagnostic.
+
+
+## v0.1.1 interface and single-file verification
+
+Date: 2026-11-02 (Asia/Shanghai). Native [workflow 41375753426](https://github.com/LiamxZhang/any2pdf/actions/runs/41375753426), application commit `846e78382eac33c157bc70c1f509d363bc99bde2`.
+
+- Windows, Linux and macOS complete-engine suites: **55 passed each**.
+- All three packaged apps passed DOCX, RTF, PDF, PNG, HTML and Chinese TXT conversions, explicit damaged/unsupported/encrypted errors, and native GUI screenshot checks. Windows/Linux exercised the new onefile executable, not a neighboring engine folder.
+- Local full suite: 54 passed, 1 skipped (Windows symlink privilege). Focused UI suite: 8 passed, including real Qt drag-enter/leave/drop events and single-record deletion preserving other records and source/output files.
+- A dark application palette was applied before opening the language popup; a pixel sampled in the unselected popup row was `#ffffff`.
+- Windows and Linux package untouched engines as DATA after PyInstaller analysis; Linux executable permissions are restored from a build-time manifest. macOS keeps its signed app bundle. All runtime licenses remain bundled; project source is not a required end-user download.
+- Single-file startup includes automatic extraction. Windows CI cold starts took approximately 50–80 seconds per standalone invocation; GUI-launched workers reuse the running application's extraction. Linux cold starts were approximately 6–9 seconds. Allow several GB of temporary disk space.
+- Separate SHA-256 release files are no longer generated. GitHub's automatic source archive links remain platform-generated, and the download instructions direct users to the application assets.
+
+Published release confirmed: [v0.1.1](https://github.com/LiamxZhang/any2pdf/releases/tag/v0.1.1). All three application assets are uploaded; there are no standalone checksum assets.
