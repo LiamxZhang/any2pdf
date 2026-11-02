@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from scripts.portable_launcher import filesystem_path
 
 
 def fixtures(root: Path) -> list[Path]:
@@ -50,8 +51,14 @@ def main() -> None:
         raise RuntimeError('Frozen bundle is missing LibreOffice')
     if not single_file and not list(bundle.rglob('NotoSansSC-Regular.ttf')):
         raise RuntimeError('Frozen bundle is missing the Chinese font')
-    with tempfile.TemporaryDirectory(prefix='any2pdf-smoke-') as folder:
-        root = Path(folder)
+    with tempfile.TemporaryDirectory(prefix='any2pdf-smoke-', dir=filesystem_path(tempfile.gettempdir())) as folder:
+        # Keep long-path-aware cleanup while passing ordinary paths to Qt/LO.
+        normal = str(folder)
+        if normal.startswith('\\\\?\\UNC\\'):
+            normal = '\\\\' + normal[8:]
+        elif normal.startswith('\\\\?\\'):
+            normal = normal[4:]
+        root = Path(normal)
         sources = fixtures(root)
         env = dict(os.environ)
         # A smoke test must prove the payload works without developer overrides
