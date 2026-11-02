@@ -50,3 +50,18 @@ Date: 2026-11-02 (Asia/Shanghai). Native [workflow 41375753426](https://github.c
 - Separate SHA-256 release files are no longer generated. GitHub's automatic source archive links remain platform-generated, and the download instructions direct users to the application assets.
 
 Published release confirmed: [v0.1.1](https://github.com/LiamxZhang/any2pdf/releases/tag/v0.1.1). All three application assets are uploaded; there are no standalone checksum assets.
+
+
+## v0.1.2 startup and selection verification
+
+Date: 2026-11-02 (Asia/Shanghai). Application commit `701917509e41f402cffce1bb751ce93631c4ff77`; [native workflow 41386520687](https://github.com/LiamxZhang/any2pdf/actions/runs/41386520687).
+
+All three complete-engine suites passed **66 tests each**, followed by frozen DOCX, RTF, PDF, PNG, HTML and Chinese TXT conversions, expected corrupt/unsupported/encrypted failure codes, and native GUI screenshot capture. Windows/Linux checks also verified that multiple independent processes reuse the same completed runtime cache without changing its completion marker. Test cache cleanup passed using Windows extended paths.
+
+Local suite: **65 passed, 1 skipped** (Windows symlink privilege). New tests cover selected-row colors after focus loss on both tables, selection retention after refresh, removal of the upload size caption, no-Playwright capability probing, cached-runtime reuse/recovery, concurrent launch serialization, and unsafe archive-path rejection.
+
+Windows native cached sample totals were 1.17 s (PDF), 1.12 s (PNG), 1.20 s (TXT), and 3.91 s (HTML). Its first DOCX invocation, including cache creation, took 54.25 s; Office conversion within it took 14.27 s. These are samples, not general conversion guarantees. See [performance investigation](performance.md) for local before/after measurements and first-launch/storage tradeoffs.
+
+The upload size caption is removed while the stat-based 10 GiB admission boundary remains unchanged. The application still downloads as one executable on Windows/Linux and a native .app archive on macOS. No independent checksum assets are generated.
+
+Published release confirmed: [v0.1.2](https://github.com/LiamxZhang/any2pdf/releases/tag/v0.1.2), with all three application assets uploaded and no separate checksum assets.
