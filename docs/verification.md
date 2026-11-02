@@ -16,6 +16,18 @@ Tests exercise real Chinese text, GB18030 after a long ASCII prefix, embedded Tr
 
 The publish job requires all native builds and smoke checks to succeed. Source publication alone does not prove portable release readiness. Check the repository Actions and Releases for the actual result.
 
+## Published native evidence
+
+Verified on 2026-11-02 (Asia/Shanghai): [release v0.1.0](https://github.com/LiamxZhang/any2pdf/releases/tag/v0.1.0) is public, not a draft. [Native workflow 41274766910](https://github.com/LiamxZhang/any2pdf/actions/runs/41274766910) completed successfully on commit `8f42dcf08a5f95e8c1727095fe4290fdfa30f965`.
+
+| Native host | Complete-engine tests | Frozen conversion / error checks | Native GUI |
+| --- | --- | --- | --- |
+| Windows x86-64 | 52 passed | Passed | Passed |
+| Linux x86-64 / Ubuntu 22.04 | 52 passed | Passed | Passed (xcb under Xvfb) |
+| macOS arm64 | 52 passed | Passed | Passed |
+
+Each frozen executable converted DOCX, RTF, existing PDF, PNG, local HTML and Chinese TXT; rejected damaged PDF, unsupported input and encrypted PDF with the expected specific error codes. Real engine tests also verified Chinese HTML text extraction and embedded NotoSansSC font identity. All three archives and their SHA-256 files are uploaded release assets.
+
 ## Practical limits
 
 - Initial supported architectures are Windows/Linux x86-64 and macOS Apple Silicon. Intel macOS and Linux ARM are not bundled.
