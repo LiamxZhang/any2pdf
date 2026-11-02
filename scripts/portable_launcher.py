@@ -23,6 +23,14 @@ def cache_root():
     return base / 'Any2PDF' / 'runtime'
 
 
+def filesystem_path(path):
+    """Use extended paths for deep Office trees on Windows without OS tweaks."""
+    value = str(Path(path).resolve())
+    if os.name == 'nt' and not value.startswith('\\\\?\\'):
+        value = '\\\\?\\UNC\\' + value[2:] if value.startswith('\\\\') else '\\\\?\\' + value
+    return Path(value)
+
+
 @contextmanager
 def cache_lock(path, timeout=600):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,7 +82,7 @@ def ensure_runtime(archive_path, root=None):
             if marker.is_file() and marker.read_text() == key and executable.is_file():
                 return executable, False
             root.mkdir(parents=True, exist_ok=True)
-            with tempfile.TemporaryDirectory(prefix=key + '-partial-', dir=root) as temporary:
+            with tempfile.TemporaryDirectory(prefix=key + '-partial-', dir=filesystem_path(root)) as temporary:
                 scratch = Path(temporary)
                 for info in archive.infolist():
                     if info.filename == '__any2pdf_runtime__.json':
@@ -103,8 +111,8 @@ def ensure_runtime(archive_path, root=None):
                 if destination.exists():
                     if not destination.resolve().is_relative_to(root) or destination.is_symlink():
                         raise ValueError('Unsafe runtime cache destination')
-                    shutil.rmtree(destination)
-                scratch.rename(destination)
+                    shutil.rmtree(filesystem_path(destination))
+                scratch.rename(filesystem_path(destination))
         return executable, True
 
 
