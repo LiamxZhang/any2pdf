@@ -23,7 +23,7 @@ jobs:
           - os: ubuntu-22.04
             target: Linux-x86_64
             executable: dist/Any2PDF-portable
-          - os: macos-15
+          - os: macos-14
             target: Darwin-arm64
             executable: dist/Any2PDF.app/Contents/MacOS/Any2PDF
     runs-on: ${{ matrix.os }}
