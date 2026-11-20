@@ -406,7 +406,10 @@ class MainWindow(QMainWindow):
     def refresh(self, *_):
         rows = self.history.list()
         by_id = {r['id']: r for r in rows}
-        ordered_ids = list(self.pending) + [task for task in self.queue_order if task not in self.pending]
+        # queue_order is the display order and includes active/completed session rows.
+        # Keep pending as a recovery fallback for tasks added before the order list existed.
+        ordered_ids = list(self.queue_order)
+        ordered_ids.extend(task for task in self.pending if task not in ordered_ids)
         ordered_queue = [by_id[task] for task in ordered_ids if task in by_id and task in self.session_ids]
         self.fill_table(self.queue_table, ordered_queue)
         query = self.search.text().casefold()
@@ -465,7 +468,8 @@ class MainWindow(QMainWindow):
             if item.widget():
                 item.widget().deleteLater()
         rows = {row['id']: row for row in self.history.list()}
-        ordered_ids = list(self.pending) + [task for task in self.queue_order if task not in self.pending]
+        ordered_ids = list(self.queue_order)
+        ordered_ids.extend(task for task in self.pending if task not in ordered_ids)
         visible = [rows[task] for task in ordered_ids if task in rows and task in self.session_ids]
         self.file_cards.setVisible(bool(visible))
         for row in visible:
@@ -660,8 +664,11 @@ class MainWindow(QMainWindow):
         if task in self.pending:
             index = self.pending.index(task)
             if index > 0:
-                self.pending[index - 1], self.pending[index] = self.pending[index], self.pending[index - 1]
-                self.queue_order[index - 1], self.queue_order[index] = self.queue_order[index], self.queue_order[index - 1]
+                neighbor = self.pending[index - 1]
+                self.pending[index - 1], self.pending[index] = task, neighbor
+                task_pos = self.queue_order.index(task)
+                neighbor_pos = self.queue_order.index(neighbor)
+                self.queue_order[neighbor_pos], self.queue_order[task_pos] = task, neighbor
                 self.refresh()
                 self.select_queue_tasks([task])
 
@@ -670,8 +677,11 @@ class MainWindow(QMainWindow):
         if task in self.pending:
             index = self.pending.index(task)
             if index < len(self.pending) - 1:
-                self.pending[index + 1], self.pending[index] = self.pending[index], self.pending[index + 1]
-                self.queue_order[index + 1], self.queue_order[index] = self.queue_order[index], self.queue_order[index + 1]
+                neighbor = self.pending[index + 1]
+                self.pending[index + 1], self.pending[index] = task, neighbor
+                task_pos = self.queue_order.index(task)
+                neighbor_pos = self.queue_order.index(neighbor)
+                self.queue_order[neighbor_pos], self.queue_order[task_pos] = task, neighbor
                 self.refresh()
                 self.select_queue_tasks([task])
 
@@ -686,6 +696,9 @@ class MainWindow(QMainWindow):
         if len(task_ids) < 2 or self.process is not None or any(task not in self.pending for task in task_ids):
             return
         rows = {row['id']: row for row in self.history.list()}
+        queue_positions = {task: index for index, task in enumerate(self.queue_order)}
+        insert_at = min(queue_positions.get(task, len(self.queue_order)) for task in task_ids)
+        pending_insert_at = min(self.pending.index(task) for task in task_ids)
         sources = []
         for task in task_ids:
             sources.extend(self.history.sources_for(rows[task]))
@@ -696,9 +709,11 @@ class MainWindow(QMainWindow):
             self.queue_order.remove(task)
             self.session_ids.discard(task)
             self.history.update(task, status='cancelled', error_code='cancelled', detail=f'Merged into task {merged}')
-        insert_at = min((self.queue_order.index(task) for task in task_ids if task in self.queue_order), default=len(self.queue_order))
-        self.pending.insert(min(insert_at, len(self.pending)), merged)
-        self.queue_order.insert(insert_at, merged)
+        self.pending.insert(min(pending_insert_at, len(self.pending)), merged)
+        # Removing selected rows shifts the original display index; clamp to the
+        # remaining list so the merged task occupies the first selected slot.
+        removed_before = sum(1 for task in task_ids if queue_positions.get(task, len(self.queue_order)) < insert_at)
+        self.queue_order.insert(max(0, insert_at - removed_before), merged)
         self.session_ids.add(merged)
         self.refresh()
 

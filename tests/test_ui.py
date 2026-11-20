@@ -2,7 +2,7 @@ import os
 os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import pytest
-from PySide6.QtCore import QMimeData, QUrl
+from PySide6.QtCore import QItemSelectionModel, QMimeData, QUrl, Qt
 from PySide6.QtWidgets import QApplication
 
 from any2pdf.ui import MainWindow
@@ -210,4 +210,23 @@ def test_queue_cards_reorder_and_merge_selection(app, tmp_path):
     pages = PdfReader(row['output']).pages
     assert 'SECOND PAGE' in (pages[0].extract_text() or '')
     assert 'FIRST PAGE' in (pages[1].extract_text() or '')
+    w.close()
+
+
+def test_merge_keeps_first_selected_slot_when_other_queue_items_remain(app, tmp_path):
+    w = MainWindow(data_dir=tmp_path / 'data', probe_engines=False)
+    files = []
+    for name in ('first.txt', 'second.txt', 'third.txt'):
+        path = tmp_path / name
+        path.write_text(name, encoding='utf-8')
+        files.append(str(path))
+    w.add_files(files)
+    first_id = w.queue_table.item(0, 0).data(Qt.UserRole)
+    second_id = w.queue_table.item(1, 0).data(Qt.UserRole)
+    model = w.queue_table.selectionModel()
+    model.select(w.queue_table.model().index(0, 0), QItemSelectionModel.Select | QItemSelectionModel.Rows)
+    model.select(w.queue_table.model().index(1, 0), QItemSelectionModel.Select | QItemSelectionModel.Rows)
+    w.merge_selected()
+    assert [w.queue_table.item(i, 0).text() for i in range(2)] == ['first.txt (+1)', 'third.txt']
+    assert w.pending[0] != first_id and w.pending[0] != second_id
     w.close()
