@@ -65,3 +65,13 @@ Windows native cached sample totals were 1.17 s (PDF), 1.12 s (PNG), 1.20 s (TXT
 The upload size caption is removed while the stat-based 10 GiB admission boundary remains unchanged. The application still downloads as one executable on Windows/Linux and a native .app archive on macOS. No independent checksum assets are generated.
 
 Published release confirmed: [v0.1.2](https://github.com/LiamxZhang/any2pdf/releases/tag/v0.1.2), with all three application assets uploaded and no separate checksum assets.
+
+
+## v0.1.3 queue and merge verification
+
+Date: 2026-11-20 (Asia/Shanghai). [Native workflow 44754521003](https://github.com/LiamxZhang/any2pdf/actions/runs/44754521003) completed successfully on commit `c530b6d14210d6b28f98983ec66451f97dcd3368`.
+
+- Windows, Linux and macOS native jobs all passed their complete-engine suites and frozen conversion/error/GUI smoke checks.
+- Local full suite: **67 passed, 1 skipped** (Windows symlink privilege). Core/UI/engine targeted suite: 30 passed. New merge regression verifies two ordered text inputs produce two ordered PDF pages; UI regression verifies cards, queue reordering and multi-row merge requests.
+- Release v0.1.3 contains exactly three uploaded application assets and no standalone SHA-256 files.
+- A batch history record stores its ordered source list in SQLite; temporary part PDFs are removed after merge and original files remain unchanged.
