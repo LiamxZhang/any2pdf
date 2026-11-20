@@ -2,6 +2,8 @@
 
 MESSAGES = {
     'unsupported': ('不支持此文件格式。请选择支持列表中的文件。', 'This file format is not supported. Choose a supported format.'),
+    'merge_requires_multiple': ('合并至少需要选择两个文件。', 'Select at least two files to merge.'),
+    'merge_failed': ('合并 PDF 失败。', 'Merging the PDFs failed.'),
     'too_large': ('文件超过单文件 10 GiB 上限。', 'The file exceeds the 10 GiB per-file limit.'),
     'missing_file': ('文件不存在、已被移动，或不是普通文件。', 'The file is missing, has moved, or is not a regular file.'),
     'permission': ('没有读取文件或写入输出目录的权限。', 'Permission denied reading the source or writing the output directory.'),

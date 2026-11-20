@@ -110,3 +110,16 @@ def test_missing_office_engine_is_explicit(tmp_path, monkeypatch):
     with pytest.raises(ConversionError) as err:
         convert(source, tmp_path / 'out')
     assert err.value.code == 'missing_office'
+
+
+def test_merge_many_preserves_input_order_and_pages(tmp_path):
+    from any2pdf.core import convert_many
+    first = tmp_path / 'first.txt'; second = tmp_path / 'second.txt'
+    first.write_text('FIRST PAGE', encoding='utf-8')
+    second.write_text('SECOND PAGE', encoding='utf-8')
+    output = convert_many([first, second], tmp_path / 'out', stem='combined')
+    pages = PdfReader(output).pages
+    assert len(pages) == 2
+    assert 'FIRST PAGE' in (pages[0].extract_text() or '')
+    assert 'SECOND PAGE' in (pages[1].extract_text() or '')
+    assert output.name == 'combined.pdf'

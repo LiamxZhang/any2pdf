@@ -4,7 +4,7 @@ import sys
 import time
 import traceback
 
-from .core import convert
+from .core import convert, convert_many
 from .errors import ConversionError
 
 
@@ -25,8 +25,13 @@ def run_worker(request_path):
         if sys.stdout:
             print(json.dumps({'stage': stage}), flush=True)
     try:
-        output = convert(request['source'], request['outdir'], cancel_path.exists, emit,
-                         workspace_prefix=request.get('workspace_prefix', '.any2pdf-'))
+        if request.get('sources'):
+            output = convert_many(request['sources'], request['outdir'], request.get('stem', 'merged'),
+                                  cancel_path.exists, emit,
+                                  workspace_prefix=request.get('workspace_prefix', '.any2pdf-'))
+        else:
+            output = convert(request['source'], request['outdir'], cancel_path.exists, emit,
+                             workspace_prefix=request.get('workspace_prefix', '.any2pdf-'))
         result = {'status': 'success', 'output': str(output), 'error_code': '', 'detail': ''}
     except ConversionError as exc:
         result = {'status': 'cancelled' if exc.code == 'cancelled' else 'failed',

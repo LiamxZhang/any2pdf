@@ -34,6 +34,7 @@ QLabel#dropIcon { font-size: 42px; color: #635BEB; }
 QFrame#drop { background: #FCFCFF; border: 2px dashed #B5B3ED; border-radius: 16px; }
 QFrame#drop[dragActive="true"] { background: #EDEBFF; border: 2px solid #635BEB; }
 QFrame#card { background: white; border: 1px solid #E4E8F1; border-radius: 12px; }
+QFrame#fileCard { background: #FFFFFF; border: 1px solid #E4E8F1; border-radius: 8px; }
 QTabWidget::pane { background: white; border: 1px solid #E4E8F1; border-radius: 12px; }
 QTabBar::tab { padding: 13px 25px; color: #64748B; border-bottom: 3px solid transparent; }
 QTabBar::tab:selected { color: #635BEB; border-bottom: 3px solid #635BEB; font-weight: bold; }
@@ -119,6 +120,7 @@ class MainWindow(QMainWindow):
         self.history = History(self.root / 'history.sqlite3')
         self.recover_workspaces()
         self.pending = []
+        self.queue_order = []
         self.session_ids = set()
         self.process = None
         self.active = None
@@ -229,6 +231,11 @@ class MainWindow(QMainWindow):
         content.addLayout(row)
         content.addStretch()
         upload.addWidget(drop, 1)
+        self.file_cards = QWidget()
+        self.file_cards_layout = QVBoxLayout(self.file_cards)
+        self.file_cards_layout.setContentsMargins(0, 0, 0, 0)
+        self.file_cards_layout.setSpacing(6)
+        upload.addWidget(self.file_cards)
         self.added_label = QLabel()
         self.added_label.setStyleSheet('color: #635BEB;')
         upload.addWidget(self.added_label)
@@ -246,7 +253,9 @@ class MainWindow(QMainWindow):
         output_row.addWidget(self.browse_button)
         queue_layout.addLayout(output_row)
         self.queue_table = self.make_table()
+        self.queue_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.queue_table.itemDoubleClicked.connect(lambda _: self.show_details(self.queue_table))
+        self.queue_table.itemSelectionChanged.connect(self.update_queue_actions)
         queue_layout.addWidget(self.queue_table, 1)
         controls = QHBoxLayout()
         self.start_button = self.button('start', self.start_queue, True)
@@ -255,6 +264,12 @@ class MainWindow(QMainWindow):
         controls.addWidget(self.cancel_button)
         controls.addStretch()
         controls.addWidget(self.button('details', lambda: self.show_details(self.queue_table)))
+        self.up_button = self.button('move_up', self.move_selected_up)
+        self.down_button = self.button('move_down', self.move_selected_down)
+        controls.addWidget(self.up_button)
+        controls.addWidget(self.down_button)
+        self.merge_button = self.button('merge', self.merge_selected, True)
+        controls.addWidget(self.merge_button)
         controls.addWidget(self.button('remove', self.remove_selected))
         queue_layout.addLayout(controls)
         self.history_page = QWidget()
@@ -380,6 +395,7 @@ class MainWindow(QMainWindow):
             try:
                 inspect_input(Path(source))
                 self.pending.append(task)
+                self.queue_order.append(task)
                 live.add(source)
             except ConversionError as exc:
                 self.history.update(task, status='failed', error_code=exc.code, detail=exc.detail)
@@ -389,7 +405,10 @@ class MainWindow(QMainWindow):
 
     def refresh(self, *_):
         rows = self.history.list()
-        self.fill_table(self.queue_table, [r for r in rows if r['id'] in self.session_ids])
+        by_id = {r['id']: r for r in rows}
+        ordered_ids = list(self.pending) + [task for task in self.queue_order if task not in self.pending]
+        ordered_queue = [by_id[task] for task in ordered_ids if task in by_id and task in self.session_ids]
+        self.fill_table(self.queue_table, ordered_queue)
         query = self.search.text().casefold()
         status = self.status_filter.currentData()
         self.fill_table(self.history_table, [r for r in rows if query in r['source'].casefold()
@@ -402,6 +421,8 @@ class MainWindow(QMainWindow):
         self.progress.setVisible(busy)
         self.added_label.setText(self.text('selected_count') + str(len(self.session_ids)) if self.session_ids else '')
         self.update_delete_button()
+        self.update_queue_actions()
+        self.refresh_file_cards()
         if busy:
             row = next((r for r in rows if r['id'] == self.active), {})
             self.status_label.setText(self.text('working') + Path(row.get('source', '')).name + '  ·  ' + self.stage_text())
@@ -409,13 +430,14 @@ class MainWindow(QMainWindow):
             self.status_label.setText(self.text('ready') + '  ·  ' + self.text('queue_count') + str(len(self.pending)))
 
     def fill_table(self, table, rows):
-        selected = self.selected_id(table)
+        selected_ids = set(self.selected_ids(table))
         table.setRowCount(len(rows))
         colors = {'success': '#26835C', 'failed': '#C44343', 'running': '#635BEB', 'cancelled': '#8A6A26'}
         for index, row in enumerate(rows):
-            path = Path(row['source'])
+            sources = self.history.sources_for(row)
+            path = Path(sources[0])
             try:
-                size = path.stat().st_size
+                size = sum(Path(source).stat().st_size for source in sources)
             except OSError:
                 size = None
             reason = explain(row['error_code'], self.lang) if row['error_code'] else row['output']
@@ -423,22 +445,54 @@ class MainWindow(QMainWindow):
                 created = datetime.fromisoformat(row['created']).astimezone().strftime('%m-%d %H:%M')
             except ValueError:
                 created = row['created']
-            values = [path.name, human_size(size), self.text(row['status']), reason, created,
+            display_name = path.name if len(sources) == 1 else f'{path.name} (+{len(sources) - 1})'
+            values = [display_name, human_size(size), self.text(row['status']), reason, created,
                       f"{row['elapsed']:.1f}s" if row['elapsed'] else '—']
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
                 item.setData(Qt.UserRole, row['id'])
-                item.setToolTip(row['source'] if column == 0 else value)
+                item.setToolTip('\n'.join(sources) if column == 0 else value)
                 if column == 2:
                     item.setForeground(QColor(colors.get(row['status'], '#64748B')))
                 table.setItem(index, column, item)
             table.setRowHeight(index, 44)
-            if row['id'] == selected:
+            if row['id'] in selected_ids:
                 table.selectRow(index)
 
+    def refresh_file_cards(self):
+        while self.file_cards_layout.count():
+            item = self.file_cards_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        rows = {row['id']: row for row in self.history.list()}
+        ordered_ids = list(self.pending) + [task for task in self.queue_order if task not in self.pending]
+        visible = [rows[task] for task in ordered_ids if task in rows and task in self.session_ids]
+        self.file_cards.setVisible(bool(visible))
+        for row in visible:
+            sources = self.history.sources_for(row)
+            card = QFrame()
+            card.setObjectName('fileCard')
+            layout = QHBoxLayout(card)
+            layout.setContentsMargins(12, 7, 12, 7)
+            name = Path(sources[0]).name
+            if len(sources) > 1:
+                name += f'  + {len(sources) - 1}'
+            label = QLabel(name)
+            label.setToolTip('\n'.join(sources))
+            layout.addWidget(label, 1)
+            layout.addWidget(QLabel(self.text(row['status'])))
+            self.file_cards_layout.addWidget(card)
+
     def selected_id(self, table):
+        ids = self.selected_ids(table)
+        if ids:
+            return ids[0]
         item = table.item(table.currentRow(), 0)
         return item.data(Qt.UserRole) if item else None
+
+    def selected_ids(self, table):
+        return [table.item(index.row(), 0).data(Qt.UserRole)
+                for index in table.selectionModel().selectedRows()]
 
     def selected_row(self, table):
         task = self.selected_id(table)
@@ -456,10 +510,14 @@ class MainWindow(QMainWindow):
         self.job_dir.mkdir(parents=True)
         self.workspace_prefix = f'.any2pdf-{job_id}-'
         self.job_outdir = Path(self.outdir.text()).expanduser().resolve()
-        self.request = {'source': row['source'], 'outdir': str(self.job_outdir),
+        sources = self.history.sources_for(row)
+        self.request = {'source': sources[0], 'outdir': str(self.job_outdir),
                         'result': str(self.job_dir / 'result.json'), 'cancel': str(self.job_dir / 'cancel'),
                         'stage': str(self.job_dir / 'stage.json'),
                         'workspace_prefix': self.workspace_prefix}
+        if len(sources) > 1:
+            self.request['sources'] = sources
+            self.request['stem'] = Path(sources[0]).stem + '-merged'
         request_file = self.job_dir / 'request.json'
         request_file.write_text(json.dumps(self.request, ensure_ascii=False), encoding='utf-8')
         self.history.update(self.active, status='running', outdir=str(self.job_outdir), error_code='', detail='')
@@ -585,6 +643,63 @@ class MainWindow(QMainWindow):
             self.history.update(task, status='cancelled', error_code='cancelled')
         if task != self.active:
             self.session_ids.discard(task)
+            if task in self.queue_order:
+                self.queue_order.remove(task)
+        self.refresh()
+
+    def update_queue_actions(self):
+        ids = self.selected_ids(self.queue_table)
+        movable = len(ids) == 1 and ids[0] in self.pending and self.process is None
+        index = self.pending.index(ids[0]) if movable else -1
+        self.up_button.setEnabled(movable and index > 0)
+        self.down_button.setEnabled(movable and index >= 0 and index < len(self.pending) - 1)
+        self.merge_button.setEnabled(len(ids) >= 2 and self.process is None and all(task in self.pending for task in ids))
+
+    def move_selected_up(self):
+        task = self.selected_id(self.queue_table)
+        if task in self.pending:
+            index = self.pending.index(task)
+            if index > 0:
+                self.pending[index - 1], self.pending[index] = self.pending[index], self.pending[index - 1]
+                self.queue_order[index - 1], self.queue_order[index] = self.queue_order[index], self.queue_order[index - 1]
+                self.refresh()
+                self.select_queue_tasks([task])
+
+    def move_selected_down(self):
+        task = self.selected_id(self.queue_table)
+        if task in self.pending:
+            index = self.pending.index(task)
+            if index < len(self.pending) - 1:
+                self.pending[index + 1], self.pending[index] = self.pending[index], self.pending[index + 1]
+                self.queue_order[index + 1], self.queue_order[index] = self.queue_order[index], self.queue_order[index + 1]
+                self.refresh()
+                self.select_queue_tasks([task])
+
+    def select_queue_tasks(self, tasks):
+        self.queue_table.clearSelection()
+        for row in range(self.queue_table.rowCount()):
+            if self.queue_table.item(row, 0).data(Qt.UserRole) in tasks:
+                self.queue_table.selectRow(row)
+
+    def merge_selected(self):
+        task_ids = self.selected_ids(self.queue_table)
+        if len(task_ids) < 2 or self.process is not None or any(task not in self.pending for task in task_ids):
+            return
+        rows = {row['id']: row for row in self.history.list()}
+        sources = []
+        for task in task_ids:
+            sources.extend(self.history.sources_for(rows[task]))
+        merged = self.history.add(sources[0], self.outdir.text(), sources=sources)
+        self.history.update(merged, detail=f'{len(sources)} files merged in queue order')
+        for task in task_ids:
+            self.pending.remove(task)
+            self.queue_order.remove(task)
+            self.session_ids.discard(task)
+            self.history.update(task, status='cancelled', error_code='cancelled', detail=f'Merged into task {merged}')
+        insert_at = min((self.queue_order.index(task) for task in task_ids if task in self.queue_order), default=len(self.queue_order))
+        self.pending.insert(min(insert_at, len(self.pending)), merged)
+        self.queue_order.insert(insert_at, merged)
+        self.session_ids.add(merged)
         self.refresh()
 
     def retry_selected(self):

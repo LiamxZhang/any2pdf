@@ -179,3 +179,35 @@ def test_selected_row_has_visible_feedback_after_losing_focus(app, tmp_path, pag
     assert table.selectionModel().selectedRows()[0].row() == 0
     assert not any('10 GiB' in label.text() for label in w.upload_page.findChildren(__import__('PySide6.QtWidgets', fromlist=['QLabel']).QLabel))
     w.close()
+
+
+def test_queue_cards_reorder_and_merge_selection(app, tmp_path):
+    from pypdf import PdfReader
+    w = MainWindow(data_dir=tmp_path / 'data', probe_engines=False)
+    w.outdir.setText(str(tmp_path / 'out'))
+    first = tmp_path / 'first.txt'; second = tmp_path / 'second.txt'
+    first.write_text('FIRST PAGE', encoding='utf-8'); second.write_text('SECOND PAGE', encoding='utf-8')
+    w.add_files([str(first), str(second)])
+    assert w.file_cards_layout.count() == 2
+    assert [w.queue_table.item(i, 0).text() for i in range(2)] == ['first.txt', 'second.txt']
+    w.queue_table.selectRow(1)
+    w.move_selected_up()
+    assert w.queue_table.item(0, 0).text() == 'second.txt'
+    w.queue_table.selectAll()
+    assert w.merge_button.isEnabled()
+    w.merge_selected()
+    assert len(w.pending) == 1
+    merged_task = w.pending[0]
+    row = next(r for r in w.history.list() if r['id'] == merged_task)
+    assert w.history.sources_for(row) == [str(second.resolve()), str(first.resolve())]
+    w.start_queue()
+    import time
+    deadline = time.monotonic() + 30
+    while (w.process is not None or w.pending) and time.monotonic() < deadline:
+        app.processEvents(); time.sleep(.02)
+    row = next(r for r in w.history.list() if r['id'] == merged_task)
+    assert row['status'] == 'success', row
+    pages = PdfReader(row['output']).pages
+    assert 'SECOND PAGE' in (pages[0].extract_text() or '')
+    assert 'FIRST PAGE' in (pages[1].extract_text() or '')
+    w.close()

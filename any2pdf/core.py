@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import warnings
 import sys
+from pypdf import PdfWriter
 
 from PIL import Image, ImageSequence
 from pypdf import PdfReader
@@ -225,30 +226,78 @@ def publish(temp, outdir, stem, cancelled):
                 counter += 1
 
 
+def _render(source, temp, cancelled, progress):
+    """Render one input into a temporary PDF without publishing it."""
+    kind = inspect_input(source)
+    check_cancel(cancelled)
+    progress(kind)
+    if kind == 'pdf':
+        validate_pdf(source)
+        copy_stream(source, temp, cancelled)
+    elif kind == 'text':
+        text_pdf(source, temp, cancelled)
+    elif kind == 'image':
+        image_pdf(source, temp, cancelled)
+    else:
+        from .engines import office_pdf, html_pdf
+        (office_pdf if kind == 'office' else html_pdf)(source, temp, cancelled)
+    check_cancel(cancelled)
+    validate_pdf(temp)
+
+
+def _prepare_output(outdir):
+    outdir.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(outdir).free < 16 * 1024**2:
+        raise ConversionError('disk_full', 'Less than 16 MiB available')
+
+
+def convert_many(sources, outdir, stem='merged', cancelled=lambda: False,
+                progress=lambda stage: None, workspace_prefix='.any2pdf-'):
+    """Render inputs in order, merge their PDF pages, and publish one result."""
+    sources = [Path(source).resolve() for source in sources]
+    if len(sources) < 2:
+        raise ConversionError('merge_requires_multiple', 'At least two files are required')
+    outdir = Path(outdir).resolve()
+    for source in sources:
+        inspect_input(source)
+    _prepare_output(outdir)
+    with tempfile.TemporaryDirectory(prefix=workspace_prefix, dir=outdir) as workspace:
+        workspace = Path(workspace)
+        parts = []
+        for index, source in enumerate(sources, 1):
+            check_cancel(cancelled)
+            part = workspace / f'part-{index:04d}.pdf'
+            _render(source, part, cancelled, progress)
+            parts.append(part)
+        progress('saving')
+        merged = workspace / 'merged.pdf'
+        writer = PdfWriter()
+        try:
+            for part in parts:
+                reader = PdfReader(part)
+                for page in reader.pages:
+                    check_cancel(cancelled)
+                    writer.add_page(page)
+            with merged.open('wb') as stream:
+                writer.write(stream)
+        except ConversionError:
+            raise
+        except Exception as exc:
+            raise ConversionError('merge_failed', exc) from exc
+        validate_pdf(merged)
+        return publish(merged, outdir, stem, cancelled)
+
+
 def convert(source, outdir, cancelled=lambda: False, progress=lambda stage: None,
             workspace_prefix='.any2pdf-'):
     source, outdir = Path(source).resolve(), Path(outdir).resolve()
     try:
-        kind = inspect_input(source)
+        inspect_input(source)
         check_cancel(cancelled)
-        outdir.mkdir(parents=True, exist_ok=True)
-        if shutil.disk_usage(outdir).free < 16 * 1024**2:
-            raise ConversionError('disk_full', 'Less than 16 MiB available')
+        _prepare_output(outdir)
         with tempfile.TemporaryDirectory(prefix=workspace_prefix, dir=outdir) as workspace:
             temp = Path(workspace) / 'result.pdf'
-            progress(kind)
-            if kind == 'pdf':
-                validate_pdf(source)
-                copy_stream(source, temp, cancelled)
-            elif kind == 'text':
-                text_pdf(source, temp, cancelled)
-            elif kind == 'image':
-                image_pdf(source, temp, cancelled)
-            else:
-                from .engines import office_pdf, html_pdf
-                (office_pdf if kind == 'office' else html_pdf)(source, temp, cancelled)
-            check_cancel(cancelled)
-            validate_pdf(temp)
+            _render(source, temp, cancelled, progress)
             progress('saving')
             return publish(temp, outdir, source.stem, cancelled)
     except ConversionError:

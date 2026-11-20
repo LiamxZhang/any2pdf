@@ -6,7 +6,7 @@ A local desktop PDF converter for Windows, Linux and macOS. Choose files or drag
 
 ## Run
 
-Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.2-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
+Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.3-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
 
 Windows/Linux executables automatically expand their runtime into a versioned cache under the application data directory on first launch. Later launches and conversions reuse it instead of unpacking again. First launch needs additional time and several GB of disk space. A missing cache is rebuilt automatically; upgrades use a separate cache. macOS keeps the native app bundle and uses an archive to preserve signing and internal links. Separate SHA-256 files are no longer published. Releases appear only after all three native tests and frozen smoke checks pass.
 
@@ -14,7 +14,7 @@ First-release targets are Windows 10/11 x86-64, Linux x86-64 with glibc 2.35+ an
 
 1. Add local files using Upload or drag and drop.
 2. Choose an output folder on Convert and start the queue.
-3. Open outputs, inspect failure diagnostics, or retry from History. Delete a selected history record or clear finished history without deleting originals or generated PDFs.
+3. Open outputs, inspect failure diagnostics, or retry from History. Delete a selected history record or clear finished history without deleting originals or generated PDFs. Use Move up/Move down to reorder the queue. Select multiple queue rows with Ctrl or Shift and choose Merge selected into one PDF; pages follow the queue order.
 
 ## Formats
 

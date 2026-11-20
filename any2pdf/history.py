@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import datetime, timezone
 
@@ -11,13 +12,19 @@ class History:
             id INTEGER PRIMARY KEY, source TEXT NOT NULL, outdir TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'queued', output TEXT NOT NULL DEFAULT '',
             error_code TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '',
-            created TEXT NOT NULL, elapsed REAL NOT NULL DEFAULT 0)''')
+            created TEXT NOT NULL, elapsed REAL NOT NULL DEFAULT 0,
+            sources TEXT NOT NULL DEFAULT '')''')
+        columns = {row[1] for row in self.db.execute('PRAGMA table_info(tasks)')}
+        if 'sources' not in columns:
+            self.db.execute("ALTER TABLE tasks ADD COLUMN sources TEXT NOT NULL DEFAULT ''")
         self.db.execute("UPDATE tasks SET status='failed', error_code='interrupted' WHERE status IN ('queued','running')")
         self.db.commit()
 
-    def add(self, source, outdir):
-        cursor = self.db.execute('INSERT INTO tasks (source,outdir,created) VALUES (?,?,?)',
-                                 (str(source), str(outdir), datetime.now(timezone.utc).isoformat()))
+    def add(self, source, outdir, sources=None):
+        source_list = [str(item) for item in (sources or [source])]
+        cursor = self.db.execute('INSERT INTO tasks (source,outdir,created,sources) VALUES (?,?,?,?)',
+                                 (str(source), str(outdir), datetime.now(timezone.utc).isoformat(),
+                                  json.dumps(source_list, ensure_ascii=False)))
         self.db.commit()
         return cursor.lastrowid
 
@@ -31,6 +38,16 @@ class History:
 
     def list(self):
         return [dict(row) for row in self.db.execute('SELECT * FROM tasks ORDER BY id DESC')]
+
+    @staticmethod
+    def sources_for(row):
+        try:
+            values = json.loads(row.get('sources') or '')
+            if isinstance(values, list) and values:
+                return [str(value) for value in values]
+        except (TypeError, ValueError):
+            pass
+        return [row['source']]
 
     def delete_finished(self, task):
         cursor = self.db.execute("DELETE FROM tasks WHERE id=? AND status NOT IN ('queued','running')", (task,))
