@@ -6,7 +6,7 @@ A local desktop PDF converter for Windows, Linux and macOS. Choose files or drag
 
 ## Run
 
-Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.3-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
+Download the application for your OS from Releases; you do not need GitHub's automatically generated **Source code** archives. Windows provides one `.exe`; Linux provides one executable (run `chmod +x Any2PDF-0.1.4-Linux-x86_64` first). On macOS, extract the archive and open the single `Any2PDF.app`. End users do not install Python or conversion engines.
 
 Windows/Linux executables automatically expand their runtime into a versioned cache under the application data directory on first launch. Later launches and conversions reuse it instead of unpacking again. First launch needs additional time and several GB of disk space. A missing cache is rebuilt automatically; upgrades use a separate cache. macOS keeps the native app bundle and uses an archive to preserve signing and internal links. Separate SHA-256 files are no longer published. Releases appear only after all three native tests and frozen smoke checks pass.
 

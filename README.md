@@ -9,7 +9,7 @@
 ## 使用
 
 1. 在 Releases 下载对应系统的应用文件，**不用下载 GitHub 自动提供的 Source code**。
-2. Windows 双击下载的 `.exe`；Linux 为下载文件添加执行权限后运行（`chmod +x Any2PDF-0.1.3-Linux-x86_64`）；macOS 解压后打开 `Any2PDF.app`。不需要安装 Python、LibreOffice 或浏览器。
+2. Windows 双击下载的 `.exe`；Linux 为下载文件添加执行权限后运行（`chmod +x Any2PDF-0.1.4-Linux-x86_64`）；macOS 解压后打开 `Any2PDF.app`。不需要安装 Python、LibreOffice 或浏览器。
 3. 在「上传文件」选择或拖入文件，拖入时会高亮并提示松开；在「转换队列」选择输出目录，点击「开始转换」。
 4. 在「历史记录」打开 PDF、查看失败原因、重试或删除选中记录。删除记录和清空历史都不会删除原文件和 PDF。
 5. 在「转换队列」中可用上移/下移调整顺序；按住 Ctrl 或 Shift 多选文件后点击「合并选中为一个 PDF」，页面顺序按队列从上到下。

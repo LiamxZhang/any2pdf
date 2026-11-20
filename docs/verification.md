@@ -75,3 +75,10 @@ Date: 2026-11-20 (Asia/Shanghai). [Native workflow 44754521003](https://github.c
 - Local full suite: **67 passed, 1 skipped** (Windows symlink privilege). Core/UI/engine targeted suite: 30 passed. New merge regression verifies two ordered text inputs produce two ordered PDF pages; UI regression verifies cards, queue reordering and multi-row merge requests.
 - Release v0.1.3 contains exactly three uploaded application assets and no standalone SHA-256 files.
 - A batch history record stores its ordered source list in SQLite; temporary part PDFs are removed after merge and original files remain unchanged.
+
+## v0.1.4 queue ordering fix
+
+- Queue display order now remains stable while a task is running or after a task finishes.
+- Moving pending rows swaps their pending neighbors without moving the active/completed row.
+- Merging selected rows replaces them at the first selected queue position, preserving later files.
+- Local full suite after the fix: **68 passed, 1 skipped** (Windows symlink privilege).
